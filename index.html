@@ -218,6 +218,17 @@
         src.connect(audioCtx.destination);
         src.start(0);
       }
+
+      function skipPoints(points, threshold = 0.80) {
+        for (const p of points) {
+          if (p.visibility < threshold) {
+            console.log("Skip due to low visibility:", p.visibility);
+            return true;
+          }
+        }
+        return false;
+      }
+
       async function predictWebcam() {
         if (runningMode !== "VIDEO") {
           runningMode = "VIDEO";
@@ -242,9 +253,12 @@
                 result.landmarks[0][26],
               ]; //hip, index, knee
 
+              if (skipPoints(pickedLeftHand) || skipPoints(pickedRightHand)) {
+                return;
+              }
+
               drawPose(pickedLeftHand);
               drawPose(pickedRightHand);
-              console.log(pickedRightHand);
               //計算大腿線距離
               leftThighCordon = thighLineDistance(pickedLeftHand);
               rightThighCordon = thighLineDistance(pickedRightHand);
