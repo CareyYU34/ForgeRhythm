@@ -1,0 +1,325 @@
+/* =========================
+   Global reset / page lock
+========================= */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 整頁鎖定不捲動 */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* =========================
+   Page layout
+========================= */
+body {
+  background: #0a0a0a;
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #fff;
+
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+
+  padding: 24px;
+}
+
+/* 通用：預設隱藏 */
+.is-hidden {
+  display: none !important;
+}
+
+/* =========================
+   Topbar (center camera btn + right YT input)
+========================= */
+.topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+  z-index: 10;
+}
+
+/* 你的按鈕 class 在 HTML 裡是 topbar-btn */
+/* 開啟/關閉鏡頭按鈕：玻璃擬態 + 層次感 */
+.topbar-btn {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  cursor: pointer;
+  user-select: none;
+
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+/* Hover：更亮 + 微浮起 */
+.topbar-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  filter: brightness(1.06);
+  transform: translateX(-50%) translateY(-1px);
+}
+
+/* Active：按下去 */
+.topbar-btn:active {
+  transform: translateX(-50%) translateY(0px) scale(0.98);
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* YT 連結輸入列 */
+.yt-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.yt-url {
+  width: clamp(220px, 28vw, 450px);
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  outline: none;
+}
+
+.yt-load-btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* =========================
+   Main content area
+========================= */
+.layout {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0; /* 防止內容把自己撐高導致裁切怪線 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* =========================
+   Webcam Stage (stable 9:16)
+   - Stage itself defines 9:16
+   - Video/Canvas fill stage
+========================= */
+.stage {
+  position: relative;
+
+  /* 盡量吃滿 layout 的高度，但保留上下左右邊距 */
+  height: calc(100% - 32px);
+  aspect-ratio: 9 / 16;
+  width: auto;
+
+  /* 不要超出可用寬度 */
+  max-width: calc(100% - 32px);
+
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+
+  z-index: 1;
+}
+
+/* video/canvas 填滿 stage */
+#webcam,
+#output {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1);
+  transform-origin: center;
+}
+
+/* 影像鋪滿容器（必要時裁切） */
+#webcam {
+  object-fit: cover;
+  display: block;
+}
+
+/* landmark overlay */
+#output {
+  pointer-events: none;
+}
+
+/* =========================
+   YouTube Player (floating top-right)
+========================= */
+.player-card {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 520px;
+  max-width: 40vw;
+  z-index: 5;
+}
+
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.player,
+.player iframe {
+  width: 100%;
+  height: 100%;
+}
+
+.overlay-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.overlay-play i {
+  font-size: 48px;
+}
+
+.controls-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(10px);
+}
+
+.btn,
+.fullscreen-btn {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.volume-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seek-container {
+  flex: 1;
+}
+
+.slider {
+  width: 120px;
+  height: 4px;
+  border-radius: 999px;
+  appearance: none;
+  outline: none;
+}
+
+.slider.seek {
+  width: 100%;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.control-select {
+  background: rgba(255, 255, 255, 1);
+  border: 1px solid rgba(255, 255, 255, 1);
+  color: #000;
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+/* =========================
+   Mobile safety
+========================= */
+@media (max-width: 760px) {
+  .topbar {
+    justify-content: center;
+    flex-wrap: wrap;
+    padding-top: 46px;
+  }
+
+  .topbar-btn {
+    position: static;
+    transform: none;
+  }
+
+  .player-card {
+    width: 92vw;
+    max-width: 92vw;
+  }
+}
