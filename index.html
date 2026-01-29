@@ -91,7 +91,7 @@
 
     <script src="./youtube.js"></script>
     <script src="./math.js"></script>
-    <script src="./https://www.youtube.com/iframe_api"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
 
     <script type="module">
       import {
@@ -131,7 +131,7 @@
 
         poseLandmarker = await PoseLandmarker.createFromOptions(fileset, {
           baseOptions: {
-            modelAssetPath: "../Model/pose_landmarker_full.task",
+            modelAssetPath: "./Model/pose_landmarker_full.task",
             delegate: "GPU",
           },
           runningMode,
@@ -161,7 +161,7 @@
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
         });
-        await initHitSound("38_Standard Snare 1_v1.wav");
+        await initHitSound("./38_Standard Snare 1_v1.wav");
       }
 
       function stopWebcam() {
