@@ -41,12 +41,13 @@ function thighLineDistance(picked) {
   return { T, PF };
 }
 
-function detectHandSpeed(p, p_prev, DT) {
-  const DX = p.x - p_prev.x;
-  const DY = p.y - p_prev.y;
-  const dist = Math.hypot(DX, DY);
-  return dist / DT;
-}
+// function detectHandSpeed(p, p_prev, DT) {
+//   const DX = p.x - p_prev.x;
+//   const DY = p.y - p_prev.y;
+//   const dist = Math.hypot(DX, DY);
+//   return dist / DT;
+// }
+
 function changePT(cordon, picked) {
   const hip = picked[0];
   const index = picked[1];
@@ -67,42 +68,4 @@ function changePT(cordon, picked) {
   }
 
   return { T, PF: PF_new };
-}
-
-function monitoringTriggerConditions(
-  prevPF,
-  ThighCordon,
-  HandSpeed,
-  SPEED_HIT,
-  SPEED_MAX,
-  PF_WARN,
-  PF_HIT,
-  nowMs,
-  lastHitMs,
-  COOLDOWN_MS,
-) {
-  const PF = ThighCordon?.PF;
-  if (PF == null) return { didHit: false, prevPF: prevPF, lastHitMs };
-  // 0) 冷卻
-  const inCooldown = nowMs - lastHitMs < COOLDOWN_MS;
-  if (inCooldown) return { didHit: false, prevPF: PF, lastHitMs };
-
-  // 1) 進入警戒區（gating）
-  if (PF >= PF_WARN) return { didHit: false, prevPF: PF, lastHitMs };
-  console.log("Warning Zone");
-
-  // 2) edge trigger：只在「從外面進入命中區」那一刻成立
-  const enteredHitZone = prevPF != null && prevPF > PF_HIT && PF <= PF_HIT;
-  if (!enteredHitZone) return { didHit: false, prevPF: PF, lastHitMs };
-
-  console.log("Hit Zone");
-
-  // 3) 速度條件
-  const speedOk = HandSpeed > SPEED_HIT && HandSpeed < SPEED_MAX;
-  if (!speedOk) return { didHit: false, prevPF: PF, lastHitMs };
-
-  // 4) 觸發
-  console.log("Hit!");
-  lastHitMs = nowMs;
-  return { didHit: true, prevPF: PF, lastHitMs };
 }

@@ -14,6 +14,18 @@
   <body>
     <!-- 頂部工具列：左邊鏡頭按鈕、右邊YT輸入（你要貼右就交給CSS） -->
     <div class="topbar">
+      <div class="sound-rack" id="soundRack">
+        <div class="rack-row">
+          <label for="leftSound">左腿</label>
+          <select id="leftSound" class="rack-select"></select>
+        </div>
+
+        <div class="rack-row">
+          <label for="rightSound">右腿</label>
+          <select id="rightSound" class="rack-select"></select>
+        </div>
+      </div>
+      
       <button id="toggle" class="topbar-btn">開啟鏡頭</button>
 
       <div class="yt-input-row">
@@ -21,7 +33,6 @@
         <button id="ytLoadBtn" class="yt-load-btn">載入</button>
       </div>
     </div>
-
     <!-- 主內容：中央 webcam + 右側 YouTube（預設隱藏，輸入後才顯示） -->
     <div class="layout">
       <div class="stage">
@@ -91,6 +102,7 @@
 
     <script src="./youtube.js"></script>
     <script src="./math.js"></script>
+    <script src="./conditions.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
 
     <script type="module">
@@ -109,20 +121,26 @@
       let poseLandmarker = null;
       let running = false;
       let runningMode = "IMAGE";
-      let stream = null;
-      let lastVideoTime = -1;
       let rafId = null;
-      let preMs = 0;
+      let stream = null;
+      let preSec = 0;
+      let lastVideoTime = -1;
       let leftThighCordon = null;
       let rightThighCordon = null;
-      let leftHandSpeed = 0;
-      let rightHandSpeed = 0;
-      let prevLeftP = null;
-      let prevRightP = null;
-      let prevRightPF = null;
-      let prevLeftPF = null;
-      let lastLeftHitMs = -Infinity;
-      let lastRightHitMs = -Infinity;
+      let rightState = {
+        pfEma: null,
+        prevPfEma: null,
+        dpf: 0,
+        armed: false,
+        lastHitMs: -Infinity,
+      };
+      let leftState = {
+        pfEma: null,
+        prevPfEma: null,
+        dpf: 0,
+        armed: false,
+        lastHitMs: -Infinity,
+      };
 
       async function createPoseLandmarker() {
         const fileset = await FilesetResolver.forVisionTasks(
@@ -145,7 +163,7 @@
       createPoseLandmarker();
 
       async function startWebcam() {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
             width: { ideal: 720 },
@@ -161,7 +179,7 @@
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
         });
-        await initHitSound("./38_Standard Snare 1_v1.wav");
+        await initAudio();
       }
 
       function stopWebcam() {
@@ -173,13 +191,22 @@
         }
         video.srcObject = null;
         lastVideoTime = -1;
-        preMs = 0;
-        prevLeftP = null;
-        prevRightP = null;
-        prevRightPF = null;
-        prevLeftPF = null;
-        lastLeftHitMs = -Infinity;
-        lastRightHitMs = -Infinity;
+        preSec = 0;
+        rightState = {
+          pfEma: null,
+          prevPfEma: null,
+          dpf: 0,
+          armed: false,
+          lastHitMs: -Infinity,
+        };
+        leftState = {
+          pfEma: null,
+          prevPfEma: null,
+          dpf: 0,
+          armed: false,
+          lastHitMs: -Infinity,
+        };
+
         console.log("Webcam stopped");
       }
 
@@ -195,31 +222,88 @@
 
       //音效初始化
       let audioCtx = null;
-      let hitBuffer = null;
+      const PLAY_SLOT_INDEX = 0;
+      const buffers = new Map();
+      const SOUND_LIBRARY = [
+        {
+          id: "snare",
+          label: "小鼓 Snare",
+          url: "./sounds/38_Standard Snare 1_v1.wav",
+        },
+        {
+          id: "kick",
+          label: "大鼓 Kick",
+          url: "./sounds/36_Standard Kick 3.wav",
+        },
+        {
+          id: "hihat",
+          label: "Hi-hat",
+          url: "./sounds/42_Hi-Hat Closed Soft.wav",
+        },
+      ];
 
-      async function initHitSound(url) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const legSound = {
+        left: "snare",
+        right: "hihat",
+      };
 
+      async function loadBuffer(id, url) {
         const res = await fetch(url);
-        const arrayBuffer = await res.arrayBuffer();
-        hitBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const arr = await res.arrayBuffer();
+        const buf = await audioCtx.decodeAudioData(arr);
+        buffers.set(id, buf);
       }
 
-      //觸發時呼叫
-      function playHitWav() {
-        if (!audioCtx || !hitBuffer) return;
+      async function initAudio() {
+        if (!audioCtx)
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended")
+          await audioCtx.resume().catch(() => {});
+        await Promise.all(SOUND_LIBRARY.map((s) => loadBuffer(s.id, s.url)));
+      }
 
-        if (audioCtx.state === "suspended") {
-          audioCtx.resume().catch(() => {});
-        }
-
+      function playLeg(leg) {
+        if (!audioCtx) return;
+        const id = legSound[leg];
+        const buf = buffers.get(id);
+        if (!buf) return;
         const src = audioCtx.createBufferSource();
-        src.buffer = hitBuffer;
+        src.buffer = buf;
         src.connect(audioCtx.destination);
-        src.start(0);
+        src.start(audioCtx.currentTime + 0.005);
       }
 
-      function skipPoints(points, threshold = 0.80) {
+      function populateSelect(selectEl, selectedId) {
+        selectEl.innerHTML = "";
+        for (const s of SOUND_LIBRARY) {
+          const opt = document.createElement("option");
+          opt.value = s.id;
+          opt.textContent = s.label;
+          if (s.id === selectedId) opt.selected = true;
+          selectEl.appendChild(opt);
+        }
+      }
+
+      function bindSoundUI() {
+        const leftSel = document.getElementById("leftSound");
+        const rightSel = document.getElementById("rightSound");
+
+        populateSelect(leftSel, legSound.left);
+        populateSelect(rightSel, legSound.right);
+
+        leftSel.addEventListener(
+          "change",
+          () => (legSound.left = leftSel.value),
+        );
+        rightSel.addEventListener(
+          "change",
+          () => (legSound.right = rightSel.value),
+        );
+      }
+
+      bindSoundUI();
+
+      function skipPoints(points, threshold = 0.8) {
         for (const p of points) {
           if (p.visibility < threshold) {
             console.log("Skip due to low visibility:", p.visibility);
@@ -235,9 +319,10 @@
           await poseLandmarker.setOptions({ runningMode: "VIDEO" });
         }
 
+        const videoTimeSec = video.currentTime;
         const webTimeMs = performance.now();
 
-        if (video.currentTime !== lastVideoTime) {
+        if (videoTimeSec !== lastVideoTime) {
           lastVideoTime = video.currentTime;
           poseLandmarker.detectForVideo(video, webTimeMs, (result) => {
             canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
@@ -270,68 +355,38 @@
                 rightThighCordon = changePT(rightThighCordon, pickedRightHand);
               }
 
-              //計算手部速度
-              const dt = (webTimeMs - preMs) / 1000;
-              if (dt > 0 && prevLeftP && prevRightP) {
-                leftHandSpeed = detectHandSpeed(
-                  result.landmarks[0][19],
-                  prevLeftP,
-                  dt,
-                );
-                rightHandSpeed = detectHandSpeed(
-                  result.landmarks[0][20],
-                  prevRightP,
-                  dt,
-                );
-                // console.log("Right Hand Speed:", rightHandSpeed);
-                // console.log("Right thigh line distance:", rightThighCordon);
-                // console.log("==========================");
-              }
-
-              prevLeftP = result.landmarks[0][19];
-              prevRightP = result.landmarks[0][20];
-              preMs = webTimeMs;
-
               //監控觸發條件
-              const SPEED_HIT = 0.12; //命中速度
-              const SPEED_MAX = 3.0; //追蹤跳點尖峰濾掉
-              const PF_WARN = 0.5; //警戒區
-              const PF_HIT = 0.3; //命中區
-              const COOLDOWN_MS = 90; // 避免一次打擊連發
+              const dtSec = videoTimeSec - preSec; //計算手部速度
+              preSec = videoTimeSec;
+              const PF_WARN = 0.8; //警戒區
+              const PF_HIT = 0.6; //命中區
+              const DPF_HIT = 0.8; //先給起點，之後調
+              const COOLDOWN_MS = 90; //避免一次打擊連發
 
-              const rightTrigger = monitoringTriggerConditions(
-                prevRightPF,
+              rightState = monitoringTriggerConditions(
+                rightState,
                 rightThighCordon,
-                rightHandSpeed,
-                SPEED_HIT,
-                SPEED_MAX,
+                dtSec,
                 PF_WARN,
                 PF_HIT,
+                DPF_HIT,
                 webTimeMs,
-                lastRightHitMs,
                 COOLDOWN_MS,
               );
-              const leftTrigger = monitoringTriggerConditions(
-                prevLeftPF,
+
+              leftState = monitoringTriggerConditions(
+                leftState,
                 leftThighCordon,
-                leftHandSpeed,
-                SPEED_HIT,
-                SPEED_MAX,
+                dtSec,
                 PF_WARN,
                 PF_HIT,
+                DPF_HIT,
                 webTimeMs,
-                lastLeftHitMs,
                 COOLDOWN_MS,
               );
 
-              prevRightPF = rightTrigger.prevPF;
-              lastRightHitMs = rightTrigger.lastHitMs;
-              prevLeftPF = leftTrigger.prevPF;
-              lastLeftHitMs = leftTrigger.lastHitMs;
-
-              if (leftTrigger.didHit || rightTrigger.didHit) {
-                playHitWav();
-              }
+              if (leftState.didHit) playLeg("left");
+              if (rightState.didHit) playLeg("right");
             }
           });
         }
