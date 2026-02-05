@@ -12,7 +12,7 @@
   </head>
 
   <body>
-    <!-- 頂部工具列：左邊鏡頭按鈕、右邊YT輸入（你要貼右就交給CSS） -->
+
     <div class="topbar">
       <div class="sound-rack" id="soundRack">
         <div class="rack-row">
@@ -25,7 +25,7 @@
           <select id="rightSound" class="rack-select"></select>
         </div>
       </div>
-      
+
       <button id="toggle" class="topbar-btn">開啟鏡頭</button>
 
       <div class="yt-input-row">
@@ -33,7 +33,7 @@
         <button id="ytLoadBtn" class="yt-load-btn">載入</button>
       </div>
     </div>
-    <!-- 主內容：中央 webcam + 右側 YouTube（預設隱藏，輸入後才顯示） -->
+    
     <div class="layout">
       <div class="stage">
         <video id="webcam" autoplay playsinline></video>
@@ -256,7 +256,10 @@
 
       async function initAudio() {
         if (!audioCtx)
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+            latencyHint: "interactive",
+          });
+
         if (audioCtx.state === "suspended")
           await audioCtx.resume().catch(() => {});
         await Promise.all(SOUND_LIBRARY.map((s) => loadBuffer(s.id, s.url)));
@@ -270,7 +273,7 @@
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
         src.connect(audioCtx.destination);
-        src.start(audioCtx.currentTime + 0.005);
+        src.start(audioCtx.currentTime);
       }
 
       function populateSelect(selectEl, selectedId) {
