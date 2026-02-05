@@ -12,7 +12,6 @@
   </head>
 
   <body>
-
     <div class="topbar">
       <div class="sound-rack" id="soundRack">
         <div class="rack-row">
@@ -33,7 +32,7 @@
         <button id="ytLoadBtn" class="yt-load-btn">載入</button>
       </div>
     </div>
-    
+
     <div class="layout">
       <div class="stage">
         <video id="webcam" autoplay playsinline></video>
@@ -166,9 +165,10 @@
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 720 },
-            height: { ideal: 1280 },
+            width: { ideal: 720, max: 720 },
+            height: { ideal: 1280, max: 1280 },
             aspectRatio: 9 / 16,
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: false,
         });
@@ -216,8 +216,9 @@
           // { start: 1, end: 2 }, //index -> knee
           { start: 0, end: 2 }, //hip -> knee
         ];
-        drawingUtils.drawLandmarks(x, { color: "red", radius: 15 });
-        drawingUtils.drawConnectors(x, THREE_POINT_CONNECTIONS);
+        const p = x[1];
+        drawingUtils.drawLandmarks([p], { color: "red", radius: 15 });
+        // drawingUtils.drawConnectors(x, THREE_POINT_CONNECTIONS);
       }
 
       //音效初始化
@@ -243,7 +244,7 @@
       ];
 
       const legSound = {
-        left: "snare",
+        left: "kick",
         right: "hihat",
       };
 
@@ -265,16 +266,34 @@
         await Promise.all(SOUND_LIBRARY.map((s) => loadBuffer(s.id, s.url)));
       }
 
-      function playLeg(leg) {
+      function resolveLegSoundId(leg, t) {
+        // 規則：t >= 0.1 時強制 kick
+        if (typeof t === "number" && t >= 0.58) return "snare";
+        return legSound[leg];
+      }
+
+      function playLegWithT(leg, t) {
         if (!audioCtx) return;
-        const id = legSound[leg];
+        const id = resolveLegSoundId(leg, t);
         const buf = buffers.get(id);
         if (!buf) return;
+
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
         src.connect(audioCtx.destination);
         src.start(audioCtx.currentTime);
       }
+
+      // function playLeg(leg) {
+      //   if (!audioCtx) return;
+      //   const id = legSound[leg];
+      //   const buf = buffers.get(id);
+      //   if (!buf) return;
+      //   const src = audioCtx.createBufferSource();
+      //   src.buffer = buf;
+      //   src.connect(audioCtx.destination);
+      //   src.start(audioCtx.currentTime);
+      // }
 
       function populateSelect(selectEl, selectedId) {
         selectEl.innerHTML = "";
@@ -309,7 +328,7 @@
       function skipPoints(points, threshold = 0.8) {
         for (const p of points) {
           if (p.visibility < threshold) {
-            console.log("Skip due to low visibility:", p.visibility);
+            // console.log("Skip due to low visibility:", p.visibility);
             return true;
           }
         }
@@ -361,8 +380,8 @@
               //監控觸發條件
               const dtSec = videoTimeSec - preSec; //計算手部速度
               preSec = videoTimeSec;
-              const PF_WARN = 0.8; //警戒區
-              const PF_HIT = 0.6; //命中區
+              const PF_WARN = 0.6; //警戒區
+              const PF_HIT = 0.4; //命中區
               const DPF_HIT = 0.8; //先給起點，之後調
               const COOLDOWN_MS = 90; //避免一次打擊連發
 
@@ -388,8 +407,9 @@
                 COOLDOWN_MS,
               );
 
-              if (leftState.didHit) playLeg("left");
-              if (rightState.didHit) playLeg("right");
+              if (leftState.didHit) playLegWithT("left", leftThighCordon.T);
+              // console.log(leftThighCordon.T);
+              if (rightState.didHit) playLegWithT("right", rightThighCordon.T);
             }
           });
         }
