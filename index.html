@@ -13,17 +13,7 @@
 
   <body>
     <div class="topbar">
-      <div class="sound-rack" id="soundRack">
-        <div class="rack-row">
-          <label for="leftSound">左腿</label>
-          <select id="leftSound" class="rack-select"></select>
-        </div>
-
-        <div class="rack-row">
-          <label for="rightSound">右腿</label>
-          <select id="rightSound" class="rack-select"></select>
-        </div>
-      </div>
+      <div class="sound-rack" id="soundRack"></div>
 
       <button id="toggle" class="topbar-btn">開啟鏡頭</button>
 
@@ -122,24 +112,14 @@
       let runningMode = "IMAGE";
       let rafId = null;
       let stream = null;
+      let prevLeftHand = null;
+      let prevRightHand = null;
       let preSec = 0;
       let lastVideoTime = -1;
       let leftThighCordon = null;
       let rightThighCordon = null;
-      let rightState = {
-        pfEma: null,
-        prevPfEma: null,
-        dpf: 0,
-        armed: false,
-        lastHitMs: -Infinity,
-      };
-      let leftState = {
-        pfEma: null,
-        prevPfEma: null,
-        dpf: 0,
-        armed: false,
-        lastHitMs: -Infinity,
-      };
+      let rightState = { canHit: true, lastHitMs: -Infinity };
+      let leftState = { canHit: true, lastHitMs: -Infinity };
 
       async function createPoseLandmarker() {
         const fileset = await FilesetResolver.forVisionTasks(
@@ -165,9 +145,12 @@
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 720, max: 720 },
-            height: { ideal: 1280, max: 1280 },
-            aspectRatio: 9 / 16,
+
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+
+            aspectRatio: 16 / 9,
+
             frameRate: { ideal: 30, max: 30 },
           },
           audio: false,
@@ -192,33 +175,19 @@
         video.srcObject = null;
         lastVideoTime = -1;
         preSec = 0;
-        rightState = {
-          pfEma: null,
-          prevPfEma: null,
-          dpf: 0,
-          armed: false,
-          lastHitMs: -Infinity,
-        };
-        leftState = {
-          pfEma: null,
-          prevPfEma: null,
-          dpf: 0,
-          armed: false,
-          lastHitMs: -Infinity,
-        };
+        prevLeftHand = null;
+        prevRightHand = null;
+        leftThighCordon = null;
+        rightThighCordon = null;
+        rightState = { canHit: true, lastHitMs: -Infinity };
+        leftState = { canHit: true, lastHitMs: -Infinity };
 
         console.log("Webcam stopped");
       }
 
       function drawPose(x) {
-        const THREE_POINT_CONNECTIONS = [
-          // { start: 0, end: 1 }, //hip -> index
-          // { start: 1, end: 2 }, //index -> knee
-          { start: 0, end: 2 }, //hip -> knee
-        ];
         const p = x[1];
         drawingUtils.drawLandmarks([p], { color: "red", radius: 15 });
-        // drawingUtils.drawConnectors(x, THREE_POINT_CONNECTIONS);
       }
 
       //音效初始化
@@ -243,11 +212,6 @@
         },
       ];
 
-      const legSound = {
-        left: "kick",
-        right: "hihat",
-      };
-
       async function loadBuffer(id, url) {
         const res = await fetch(url);
         const arr = await res.arrayBuffer();
@@ -266,15 +230,10 @@
         await Promise.all(SOUND_LIBRARY.map((s) => loadBuffer(s.id, s.url)));
       }
 
-      function resolveLegSoundId(leg, t) {
-        // 規則：t >= 0.1 時強制 kick
-        if (typeof t === "number" && t >= 0.58) return "snare";
-        return legSound[leg];
-      }
-
-      function playLegWithT(leg, t) {
+      function playZone(side /* left/right */, zoneId /* one of ZONES ids */) {
         if (!audioCtx) return;
-        const id = resolveLegSoundId(leg, t);
+        const key = `${side}_${zoneId}`;
+        const id = zoneSound[key];
         const buf = buffers.get(id);
         if (!buf) return;
 
@@ -284,16 +243,34 @@
         src.start(audioCtx.currentTime);
       }
 
-      // function playLeg(leg) {
-      //   if (!audioCtx) return;
-      //   const id = legSound[leg];
-      //   const buf = buffers.get(id);
-      //   if (!buf) return;
-      //   const src = audioCtx.createBufferSource();
-      //   src.buffer = buf;
-      //   src.connect(audioCtx.destination);
-      //   src.start(audioCtx.currentTime);
-      // }
+      const ZONES = [
+        { id: "outer", label: "大腿外側" },
+        { id: "front", label: "大腿正面" },
+        { id: "inner", label: "大腿內側" },
+      ];
+
+      // 每個 zone 都能選 snare/kick/hihat
+      // key 格式：`${side}_${zoneId}`，side = left/right
+      const zoneSound = {};
+      for (const side of ["left", "right"]) {
+        for (const z of ZONES) {
+          const key = `${side}_${z.id}`;
+
+          // 預設：
+          // - 左 front = kick
+          // - 右 front = hihat
+          // - 其餘（outer/inner）= snare
+          if (z.id === "front") {
+            zoneSound[key] = "hihat";
+          }
+          if (z.id === "outer") {
+            zoneSound[key] = "snare";
+          }
+          if (z.id === "inner") {
+            zoneSound[key] = "kick";
+          }
+        }
+      }
 
       function populateSelect(selectEl, selectedId) {
         selectEl.innerHTML = "";
@@ -307,28 +284,54 @@
       }
 
       function bindSoundUI() {
-        const leftSel = document.getElementById("leftSound");
-        const rightSel = document.getElementById("rightSound");
+        const rack = document.getElementById("soundRack");
+        rack.innerHTML = "";
 
-        populateSelect(leftSel, legSound.left);
-        populateSelect(rightSel, legSound.right);
+        for (const side of ["left", "right"]) {
+          const block = document.createElement("div");
+          block.className = "zone-block";
 
-        leftSel.addEventListener(
-          "change",
-          () => (legSound.left = leftSel.value),
-        );
-        rightSel.addEventListener(
-          "change",
-          () => (legSound.right = rightSel.value),
-        );
+          const header = document.createElement("div");
+          header.className = "zone-header";
+          header.textContent = side === "left" ? "左腿" : "右腿";
+
+          const body = document.createElement("div");
+          body.className = "zone-body";
+
+          for (const z of ZONES) {
+            const row = document.createElement("div");
+            row.className = "zone-row";
+
+            const label = document.createElement("div");
+            label.className = "zone-label";
+            label.textContent = z.label;
+
+            const sel = document.createElement("select");
+            sel.className = "rack-select";
+            const key = `${side}_${z.id}`;
+            sel.id = `sound_${key}`;
+
+            populateSelect(sel, zoneSound[key]);
+
+            sel.addEventListener("change", () => {
+              zoneSound[key] = sel.value;
+            });
+
+            row.appendChild(label);
+            row.appendChild(sel);
+            body.appendChild(row);
+          }
+
+          block.appendChild(header);
+          block.appendChild(body);
+          rack.appendChild(block);
+        }
       }
-
       bindSoundUI();
 
-      function skipPoints(points, threshold = 0.8) {
+      function skipPoints(points, threshold = 0.65) {
         for (const p of points) {
           if (p.visibility < threshold) {
-            // console.log("Skip due to low visibility:", p.visibility);
             return true;
           }
         }
@@ -348,17 +351,24 @@
           lastVideoTime = video.currentTime;
           poseLandmarker.detectForVideo(video, webTimeMs, (result) => {
             canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
             if (result.landmarks.length > 0) {
-              const pickedLeftHand = [
-                result.landmarks[0][23],
-                result.landmarks[0][19],
-                result.landmarks[0][25],
-              ]; //hip, index, knee
-              const pickedRightHand = [
-                result.landmarks[0][24],
-                result.landmarks[0][20],
-                result.landmarks[0][26],
-              ]; //hip, index, knee
+              const leftHip = result.landmarks[0][23];
+              const rightHip = result.landmarks[0][24];
+              const leftKnee = result.landmarks[0][25];
+              const rightKnee = result.landmarks[0][26];
+
+              const leftHandBase = handBasePointFromPoseLandmarks(
+                result.landmarks[0],
+                "L",
+              );
+              const rightHandBase = handBasePointFromPoseLandmarks(
+                result.landmarks[0],
+                "R",
+              );
+
+              const pickedLeftHand = [leftHip, leftHandBase, leftKnee];
+              const pickedRightHand = [rightHip, rightHandBase, rightKnee];
 
               if (skipPoints(pickedLeftHand) || skipPoints(pickedRightHand)) {
                 return;
@@ -366,50 +376,84 @@
 
               drawPose(pickedLeftHand);
               drawPose(pickedRightHand);
-              //計算大腿線距離
+
+              //計算手在大腿線段上的方位
+              const dtSec = Math.max(1e-4, videoTimeSec - preSec); //計算手部速度
+
+              const prevLeftHandPt = prevLeftHand;
+              const prevRightHandPt = prevRightHand;
+
               leftThighCordon = thighLineDistance(pickedLeftHand);
               rightThighCordon = thighLineDistance(pickedRightHand);
 
-              if (leftThighCordon.T <= 0 || leftThighCordon.T >= 1) {
-                leftThighCordon = changePT(leftThighCordon, pickedLeftHand);
-              }
-              if (rightThighCordon.T <= 0 || rightThighCordon.T >= 1) {
-                rightThighCordon = changePT(rightThighCordon, pickedRightHand);
-              }
+              prevLeftHand = pickedLeftHand[1];
+              prevRightHand = pickedRightHand[1];
 
               //監控觸發條件
-              const dtSec = videoTimeSec - preSec; //計算手部速度
               preSec = videoTimeSec;
-              const PF_WARN = 0.6; //警戒區
-              const PF_HIT = 0.4; //命中區
-              const DPF_HIT = 0.8; //先給起點，之後調
-              const COOLDOWN_MS = 90; //避免一次打擊連發
+              const PF_HIT = 0.3;
+              const PF_RELEASE = 0.4;
+              const COOLDOWN_MS = 160;
+              const SPEED_HIT = 0.25;
+              const leftHandSpeed = prevLeftHandPt
+                ? Math.hypot(
+                    pickedLeftHand[1].x - prevLeftHandPt.x,
+                    pickedLeftHand[1].y - prevLeftHandPt.y,
+                  ) / dtSec
+                : 0;
 
+              const rightHandSpeed = prevRightHandPt
+                ? Math.hypot(
+                    pickedRightHand[1].x - prevRightHandPt.x,
+                    pickedRightHand[1].y - prevRightHandPt.y,
+                  ) / dtSec
+                : 0;
               rightState = monitoringTriggerConditions(
                 rightState,
                 rightThighCordon,
-                dtSec,
-                PF_WARN,
                 PF_HIT,
-                DPF_HIT,
+                PF_RELEASE,
                 webTimeMs,
                 COOLDOWN_MS,
+                rightHandSpeed,
+                SPEED_HIT,
               );
 
               leftState = monitoringTriggerConditions(
                 leftState,
                 leftThighCordon,
-                dtSec,
-                PF_WARN,
                 PF_HIT,
-                DPF_HIT,
+                PF_RELEASE,
                 webTimeMs,
                 COOLDOWN_MS,
+                leftHandSpeed,
+                SPEED_HIT,
               );
+              if (leftState.didHit) {
+                const zoneId = pickLegZoneByEntry(
+                  prevLeftHandPt,
+                  pickedLeftHand[1],
+                  "left",
+                );
+                console.log("LEFT HIT", {
+                  PF: leftThighCordon.PF,
+                  zoneId,
+                });
+                playZone("left", zoneId);
+              }
 
-              if (leftState.didHit) playLegWithT("left", leftThighCordon.T);
-              // console.log(leftThighCordon.T);
-              if (rightState.didHit) playLegWithT("right", rightThighCordon.T);
+              if (rightState.didHit) {
+                const zoneId = pickLegZoneByEntry(
+                  prevRightHandPt,
+                  pickedRightHand[1],
+                  "right",
+                );
+                console.log("RIGHT HIT", {
+                  PF: rightThighCordon.PF,
+                  zoneId,
+                });
+                playZone("right", zoneId);
+              }
             }
           });
         }
