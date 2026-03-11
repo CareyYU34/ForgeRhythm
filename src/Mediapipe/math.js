@@ -1,8 +1,7 @@
-/** PF計算 **/
 function footPoint(ABx, ABy, APx, APy) {
-  const denom = ABx * ABx + ABy * ABy; // |AB|^2
+  const denom = ABx * ABx + ABy * ABy;
   if (denom < 1e-8) return 0;
-  return (APx * ABx + APy * ABy) / denom; // t
+  return (APx * ABx + APy * ABy) / denom;
 }
 
 function footPointCoordinate(A, ABx, ABy, t) {
@@ -17,28 +16,24 @@ function indexFootLineDistance(ABX, ABY, P, f) {
   return PF / thighLen;
 }
 
-function thighLineDistance(picked) {
+export function thighLineDistance(picked) {
   const hip = picked[0];
   const index = picked[1];
   const knee = picked[2];
 
-  //A = hip, B = knee, P = index
   const ABX = knee.x - hip.x;
   const ABY = knee.y - hip.y;
   const APX = index.x - hip.x;
   const APY = index.y - hip.y;
-  //t = (AP·AB) / (AB·AB)
+
   const T = footPoint(ABX, ABY, APX, APY);
   const t = Math.max(0, Math.min(1, T));
-  //F = A + t * AB
   const F = footPointCoordinate(hip, ABX, ABY, t);
-  //PF = P - F
   const PF = indexFootLineDistance(ABX, ABY, index, F);
 
   return { PF };
 }
 
-/** 手部平均點 **/
 function avg2(a, b) {
   return {
     x: (a.x + b.x) / 2,
@@ -48,22 +43,20 @@ function avg2(a, b) {
   };
 }
 
-function handBasePointFromPoseLandmarks(landmarks, side /* "L" or "R" */) {
-  if (side === "L") {
+export function handBasePointFromPoseLandmarks(landmarks, side) {
+  if (side === 'L') {
     const pinky = landmarks[17];
     const index = landmarks[19];
     return avg2(pinky, index);
-  } else {
-    const pinky = landmarks[18];
-    const index = landmarks[20];
-    return avg2(pinky, index);
   }
+
+  const pinky = landmarks[18];
+  const index = landmarks[20];
+  return avg2(pinky, index);
 }
 
-/** Zone判斷 **/
-
-function pickLegZoneByEntry(prevHand, hand, side, AXIS_RATIO = 1.1) {
-  if (!prevHand) return "front";
+export function pickLegZoneByEntry(prevHand, hand, side, AXIS_RATIO = 1.1) {
+  if (!prevHand) return 'front';
 
   const dx = hand.x - prevHand.x;
   const dy = hand.y - prevHand.y;
@@ -71,12 +64,10 @@ function pickLegZoneByEntry(prevHand, hand, side, AXIS_RATIO = 1.1) {
   const ax = Math.abs(dx);
   const ay = Math.abs(dy);
 
-  // 主要沿垂直（你說的：某個軸變化最大）
   if (ay >= ax * AXIS_RATIO) {
-    return "front"; // 上下都算 front（你要更細可再拆 up/down）
+    return 'front';
   }
 
-  // 主要沿水平：依左右腿決定 outer/inner
-  if (side === "right") return dx < 0 ? "inner" : "outer";
-  return dx > 0 ? "inner" : "outer";
+  if (side === 'right') return dx < 0 ? 'inner' : 'outer';
+  return dx > 0 ? 'inner' : 'outer';
 }

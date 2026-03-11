@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="utf-8" />
-    <title>MediaPipe 動作驗證</title>
+    <title>Forge Rhythm</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="styles.css" />
     <link
@@ -13,9 +13,20 @@
 
   <body>
     <div class="topbar">
-      <div class="sound-rack" id="soundRack"></div>
+      <div class="settings-wrap">
+        <button id="settingsToggle" class="topbar-btn settings-btn">
+          <i class="fas fa-gear"></i>
+          設定
+        </button>
 
-      <button id="toggle" class="topbar-btn">開啟鏡頭</button>
+        <div class="settings-panel is-hidden" id="settingsPanel">
+          <div class="settings-panel-header">工具設定</div>
+          <div class="runtime-controls" id="runtimeControls"></div>
+          <div class="sound-rack" id="soundRack"></div>
+        </div>
+      </div>
+
+      <button id="toggle" class="topbar-btn">關閉鏡頭</button>
 
       <div class="yt-input-row">
         <input id="ytUrl" class="yt-url" placeholder="youtube 連結輸入" />
@@ -25,8 +36,10 @@
 
     <div class="layout">
       <div class="stage">
-        <video id="webcam" autoplay playsinline></video>
-        <canvas id="output"></canvas>
+        <div class="camera-frame">
+          <video id="webcam" autoplay playsinline></video>
+          <canvas id="output"></canvas>
+        </div>
       </div>
 
       <div id="ytPanel" class="player-card is-hidden">
@@ -88,389 +101,6 @@
         </div>
       </div>
     </div>
-
-    <script src="./youtube.js"></script>
-    <script src="./math.js"></script>
-    <script src="./conditions.js"></script>
-    <script src="https://www.youtube.com/iframe_api"></script>
-
-    <script type="module">
-      import {
-        PoseLandmarker,
-        FilesetResolver,
-        DrawingUtils,
-      } from "https://cdn.skypack.dev/@mediapipe/tasks-vision@0.10.11";
-
-      const video = document.getElementById("webcam");
-      const canvas = document.getElementById("output");
-      const canvasCtx = canvas.getContext("2d");
-      const drawingUtils = new DrawingUtils(canvasCtx);
-      const button = document.getElementById("toggle");
-
-      let poseLandmarker = null;
-      let running = false;
-      let runningMode = "IMAGE";
-      let rafId = null;
-      let stream = null;
-      let prevLeftHand = null;
-      let prevRightHand = null;
-      let preSec = 0;
-      let lastVideoTime = -1;
-      let leftThighCordon = null;
-      let rightThighCordon = null;
-      let rightState = { canHit: true, lastHitMs: -Infinity };
-      let leftState = { canHit: true, lastHitMs: -Infinity };
-
-      async function createPoseLandmarker() {
-        const fileset = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.11/wasm",
-        );
-
-        poseLandmarker = await PoseLandmarker.createFromOptions(fileset, {
-          baseOptions: {
-            modelAssetPath: "./Model/pose_landmarker_full.task",
-            delegate: "GPU",
-          },
-          runningMode,
-          numPoses: 1,
-          minPoseDetectionConfidence: 0.5,
-          minPosePresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-          outputSegmentationMasks: false,
-        });
-      }
-      createPoseLandmarker();
-
-      async function startWebcam() {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-
-            aspectRatio: 16 / 9,
-
-            frameRate: { ideal: 30, max: 30 },
-          },
-          audio: false,
-        });
-        video.srcObject = stream;
-        console.log("Webcam started");
-        video.addEventListener("loadeddata", predictWebcam);
-        video.addEventListener("loadedmetadata", () => {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-        });
-        await initAudio();
-      }
-
-      function stopWebcam() {
-        if (rafId) cancelAnimationFrame(rafId);
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        if (stream) {
-          stream.getTracks().forEach((t) => t.stop());
-          stream = null;
-        }
-        video.srcObject = null;
-        lastVideoTime = -1;
-        preSec = 0;
-        prevLeftHand = null;
-        prevRightHand = null;
-        leftThighCordon = null;
-        rightThighCordon = null;
-        rightState = { canHit: true, lastHitMs: -Infinity };
-        leftState = { canHit: true, lastHitMs: -Infinity };
-
-        console.log("Webcam stopped");
-      }
-
-      function drawPose(x) {
-        const p = x[1];
-        drawingUtils.drawLandmarks([p], { color: "red", radius: 15 });
-      }
-
-      //音效初始化
-      let audioCtx = null;
-      const PLAY_SLOT_INDEX = 0;
-      const buffers = new Map();
-      const SOUND_LIBRARY = [
-        {
-          id: "snare",
-          label: "小鼓 Snare",
-          url: "./sounds/38_Standard Snare 1_v1.wav",
-        },
-        {
-          id: "kick",
-          label: "大鼓 Kick",
-          url: "./sounds/36_Standard Kick 3.wav",
-        },
-        {
-          id: "hihat",
-          label: "Hi-hat",
-          url: "./sounds/42_Hi-Hat Closed Soft.wav",
-        },
-      ];
-
-      async function loadBuffer(id, url) {
-        const res = await fetch(url);
-        const arr = await res.arrayBuffer();
-        const buf = await audioCtx.decodeAudioData(arr);
-        buffers.set(id, buf);
-      }
-
-      async function initAudio() {
-        if (!audioCtx)
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-            latencyHint: "interactive",
-          });
-
-        if (audioCtx.state === "suspended")
-          await audioCtx.resume().catch(() => {});
-        await Promise.all(SOUND_LIBRARY.map((s) => loadBuffer(s.id, s.url)));
-      }
-
-      function playZone(side /* left/right */, zoneId /* one of ZONES ids */) {
-        if (!audioCtx) return;
-        const key = `${side}_${zoneId}`;
-        const id = zoneSound[key];
-        const buf = buffers.get(id);
-        if (!buf) return;
-
-        const src = audioCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(audioCtx.destination);
-        src.start(audioCtx.currentTime);
-      }
-
-      const ZONES = [
-        { id: "outer", label: "大腿外側" },
-        { id: "front", label: "大腿正面" },
-        { id: "inner", label: "大腿內側" },
-      ];
-
-      // 每個 zone 都能選 snare/kick/hihat
-      // key 格式：`${side}_${zoneId}`，side = left/right
-      const zoneSound = {};
-      for (const side of ["left", "right"]) {
-        for (const z of ZONES) {
-          const key = `${side}_${z.id}`;
-
-          // 預設：
-          // - 左 front = kick
-          // - 右 front = hihat
-          // - 其餘（outer/inner）= snare
-          if (z.id === "front") {
-            zoneSound[key] = "hihat";
-          }
-          if (z.id === "outer") {
-            zoneSound[key] = "snare";
-          }
-          if (z.id === "inner") {
-            zoneSound[key] = "kick";
-          }
-        }
-      }
-
-      function populateSelect(selectEl, selectedId) {
-        selectEl.innerHTML = "";
-        for (const s of SOUND_LIBRARY) {
-          const opt = document.createElement("option");
-          opt.value = s.id;
-          opt.textContent = s.label;
-          if (s.id === selectedId) opt.selected = true;
-          selectEl.appendChild(opt);
-        }
-      }
-
-      function bindSoundUI() {
-        const rack = document.getElementById("soundRack");
-        rack.innerHTML = "";
-
-        for (const side of ["left", "right"]) {
-          const block = document.createElement("div");
-          block.className = "zone-block";
-
-          const header = document.createElement("div");
-          header.className = "zone-header";
-          header.textContent = side === "left" ? "左腿" : "右腿";
-
-          const body = document.createElement("div");
-          body.className = "zone-body";
-
-          for (const z of ZONES) {
-            const row = document.createElement("div");
-            row.className = "zone-row";
-
-            const label = document.createElement("div");
-            label.className = "zone-label";
-            label.textContent = z.label;
-
-            const sel = document.createElement("select");
-            sel.className = "rack-select";
-            const key = `${side}_${z.id}`;
-            sel.id = `sound_${key}`;
-
-            populateSelect(sel, zoneSound[key]);
-
-            sel.addEventListener("change", () => {
-              zoneSound[key] = sel.value;
-            });
-
-            row.appendChild(label);
-            row.appendChild(sel);
-            body.appendChild(row);
-          }
-
-          block.appendChild(header);
-          block.appendChild(body);
-          rack.appendChild(block);
-        }
-      }
-      bindSoundUI();
-
-      function skipPoints(points, threshold = 0.65) {
-        for (const p of points) {
-          if (p.visibility < threshold) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      async function predictWebcam() {
-        if (runningMode !== "VIDEO") {
-          runningMode = "VIDEO";
-          await poseLandmarker.setOptions({ runningMode: "VIDEO" });
-        }
-
-        const videoTimeSec = video.currentTime;
-        const webTimeMs = performance.now();
-
-        if (videoTimeSec !== lastVideoTime) {
-          lastVideoTime = video.currentTime;
-          poseLandmarker.detectForVideo(video, webTimeMs, (result) => {
-            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-
-            if (result.landmarks.length > 0) {
-              const leftHip = result.landmarks[0][23];
-              const rightHip = result.landmarks[0][24];
-              const leftKnee = result.landmarks[0][25];
-              const rightKnee = result.landmarks[0][26];
-
-              const leftHandBase = handBasePointFromPoseLandmarks(
-                result.landmarks[0],
-                "L",
-              );
-              const rightHandBase = handBasePointFromPoseLandmarks(
-                result.landmarks[0],
-                "R",
-              );
-
-              const pickedLeftHand = [leftHip, leftHandBase, leftKnee];
-              const pickedRightHand = [rightHip, rightHandBase, rightKnee];
-
-              if (skipPoints(pickedLeftHand) || skipPoints(pickedRightHand)) {
-                return;
-              }
-
-              drawPose(pickedLeftHand);
-              drawPose(pickedRightHand);
-
-              //計算手在大腿線段上的方位
-              const dtSec = Math.max(1e-4, videoTimeSec - preSec); //計算手部速度
-
-              const prevLeftHandPt = prevLeftHand;
-              const prevRightHandPt = prevRightHand;
-
-              leftThighCordon = thighLineDistance(pickedLeftHand);
-              rightThighCordon = thighLineDistance(pickedRightHand);
-
-              prevLeftHand = pickedLeftHand[1];
-              prevRightHand = pickedRightHand[1];
-
-              //監控觸發條件
-              preSec = videoTimeSec;
-              const PF_HIT = 0.3;
-              const PF_RELEASE = 0.4;
-              const COOLDOWN_MS = 160;
-              const SPEED_HIT = 0.25;
-              const leftHandSpeed = prevLeftHandPt
-                ? Math.hypot(
-                    pickedLeftHand[1].x - prevLeftHandPt.x,
-                    pickedLeftHand[1].y - prevLeftHandPt.y,
-                  ) / dtSec
-                : 0;
-
-              const rightHandSpeed = prevRightHandPt
-                ? Math.hypot(
-                    pickedRightHand[1].x - prevRightHandPt.x,
-                    pickedRightHand[1].y - prevRightHandPt.y,
-                  ) / dtSec
-                : 0;
-              rightState = monitoringTriggerConditions(
-                rightState,
-                rightThighCordon,
-                PF_HIT,
-                PF_RELEASE,
-                webTimeMs,
-                COOLDOWN_MS,
-                rightHandSpeed,
-                SPEED_HIT,
-              );
-
-              leftState = monitoringTriggerConditions(
-                leftState,
-                leftThighCordon,
-                PF_HIT,
-                PF_RELEASE,
-                webTimeMs,
-                COOLDOWN_MS,
-                leftHandSpeed,
-                SPEED_HIT,
-              );
-              if (leftState.didHit) {
-                const zoneId = pickLegZoneByEntry(
-                  prevLeftHandPt,
-                  pickedLeftHand[1],
-                  "left",
-                );
-                console.log("LEFT HIT", {
-                  PF: leftThighCordon.PF,
-                  zoneId,
-                });
-                playZone("left", zoneId);
-              }
-
-              if (rightState.didHit) {
-                const zoneId = pickLegZoneByEntry(
-                  prevRightHandPt,
-                  pickedRightHand[1],
-                  "right",
-                );
-                console.log("RIGHT HIT", {
-                  PF: rightThighCordon.PF,
-                  zoneId,
-                });
-                playZone("right", zoneId);
-              }
-            }
-          });
-        }
-        rafId = requestAnimationFrame(predictWebcam);
-      }
-
-      button.onclick = async () => {
-        if (!poseLandmarker) return;
-        running = !running;
-        button.textContent = running ? "關閉鏡頭" : "開啟鏡頭";
-
-        if (running) {
-          await startWebcam();
-        } else {
-          stopWebcam();
-        }
-      };
-    </script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>

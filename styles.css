@@ -30,7 +30,7 @@ body {
   display: flex;
   flex-direction: column;
 
-  padding: 24px;
+  padding: 12px;
 }
 
 /* 通用：預設隱藏 */
@@ -84,7 +84,6 @@ body {
 
   z-index: 10;
 }
-
 .zone-block {
   display: flex;
   flex-direction: column;
@@ -124,8 +123,7 @@ body {
   opacity: 0.92;
 }
 
-.rack-select,
-.control-select {
+.rack-select {
   background: rgba(0, 0, 0, 0.75);
   color: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -147,14 +145,22 @@ body {
   border-color: rgba(255, 255, 255, 0.38);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
 }
-
-/* 你的按鈕 class 在 HTML 裡是 topbar-btn */
-/* 開啟/關閉鏡頭按鈕：玻璃擬態 + 層次感 */
-.topbar-btn {
+#toggle {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+}
 
+#toggle:hover {
+  transform: translateX(-50%) translateY(-1px);
+}
+
+#toggle:active {
+  transform: translateX(-50%) translateY(0px) scale(0.98);
+}
+/* 你的按鈕 class 在 HTML 裡是 topbar-btn */
+/* 開啟/關閉鏡頭按鈕：玻璃擬態 + 層次感 */
+.topbar-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -187,7 +193,6 @@ body {
     box-shadow 160ms ease,
     filter 160ms ease;
 }
-
 /* Hover：更亮 + 微浮起 */
 .topbar-btn:hover {
   background: rgba(255, 255, 255, 0.16);
@@ -196,17 +201,155 @@ body {
     0 14px 34px rgba(0, 0, 0, 0.52),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
   filter: brightness(1.06);
-  transform: translateX(-50%) translateY(-1px);
+  transform: translateY(-1px);
 }
 
 /* Active：按下去 */
 .topbar-btn:active {
-  transform: translateX(-50%) translateY(0px) scale(0.98);
+  transform: translateY(0px) scale(0.98);
   box-shadow:
     0 8px 18px rgba(0, 0, 0, 0.46),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
+.settings-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  z-index: 20;
+}
 
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 1000;
+
+  width: min(760px, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
+
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(15, 15, 18, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.settings-panel.is-hidden {
+  display: none;
+}
+
+.settings-panel-header {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.runtime-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.settings-control-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-control-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+}
+
+.settings-control-inputs {
+  display: grid;
+  grid-template-columns: 1fr 88px;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-control-inputs input[type="range"] {
+  width: 100%;
+}
+
+.settings-number-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.settings-number-input:focus {
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+
+/* 讓 soundRack 放進 panel 後改成直向排版 */
+.settings-panel .sound-rack {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 每個左右腿區塊 */
+.settings-panel .zone-block {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.settings-panel .zone-header {
+  color: #fff;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.settings-panel .zone-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-panel .zone-label {
+  color: #fff;
+  font-size: 14px;
+}
+
+.settings-panel .rack-select {
+  width: 100%;
+}
 /* YT 連結輸入列 */
 .yt-input-row {
   display: flex;
@@ -239,33 +382,31 @@ body {
 .layout {
   position: relative;
   flex: 1 1 auto;
-  min-height: 0; /* 防止內容把自己撐高導致裁切怪線 */
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-/* =========================
-   Webcam Stage (stable 9:16)
-   - Stage itself defines 9:16
-   - Video/Canvas fill stage
-========================= */
 .stage {
   position: relative;
-
-  /* 盡量吃滿 layout 的高度，但保留上下左右邊距 */
-  height: calc(100% - 32px);
-  aspect-ratio: 16 / 9;
-  width: auto;
-
-  /* 不要超出可用寬度 */
-  max-width: calc(100% - 32px);
-
-  background: #fff;
-  border-radius: 16px;
+  width: 100%;
+  height: 100%;
+  background: #17cd4a;
   overflow: hidden;
-
+  border-radius: 20px;
   z-index: 1;
+}
+
+/* 真正的相機顯示框：完整填滿 stage */
+.camera-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #ff0000;
+  overflow: hidden;
+  border-radius: inherit;
 }
 
 /* video/canvas 填滿 stage */
@@ -279,15 +420,19 @@ body {
   transform-origin: center;
 }
 
+
 /* 影像鋪滿容器（必要時裁切） */
 #webcam {
   object-fit: cover;
   display: block;
+  background: #c5c2c2;
+  border-radius: inherit;
 }
 
 /* landmark overlay */
 #output {
   pointer-events: none;
+  border-radius: inherit;
 }
 
 /* =========================
@@ -391,6 +536,7 @@ body {
   color: #000;
   border-radius: 10px;
   padding: 6px 8px;
+  outline: none;
 }
 
 .time {
@@ -424,5 +570,17 @@ body {
   .player-card {
     width: 92vw;
     max-width: 92vw;
+  }
+  .settings-panel {
+    width: 92vw;
+  }
+
+  .settings-panel .sound-rack {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-control-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 }
