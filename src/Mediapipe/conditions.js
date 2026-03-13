@@ -40,62 +40,98 @@ export function monitoringTriggerConditions(
 
 export function monitoringKneeKickConditions(
   state,
-  kneeY,
-  prevKneeY,
-  dtSec,
+  metrics,
   nowMs,
-  KNEE_DROP_HIT,
-  KNEE_DROP_RELEASE,
-  KNEE_SPEED_HIT,
-  COOLDOWN_MS
+  thresholds
 ) {
-  if (kneeY == null || prevKneeY == null || !dtSec) {
+  if (!metrics) {
     return { ...(state ?? {}), didHit: false };
   }
 
   if (!state) state = {};
   if (state.lastHitMs == null) state.lastHitMs = -Infinity;
   if (state.canHit == null) state.canHit = true;
-  if (state.highY == null) state.highY = kneeY;
 
-  state.highY = Math.min(state.highY, kneeY);
+  const {
+    windowDy,
+    windowDx,
+    sumAbsDx,
+    sumAbsDy,
+    avgDownSpeed,
+    maxDownSpeed,
+    downFrameRatio,
+    xyRatio,
+  } = metrics;
 
-  const kneeDownSpeed = (kneeY - prevKneeY) / dtSec;
-  const drop = kneeY - state.highY;
+  const {
+    windowDropHit,
+    windowDropRelease,
+    avgSpeedHit,
+    peakSpeedHit,
+    cooldownMs,
+    windowMaxDx,
+    maxXyRatio,
+    downFrameRatioHit,
+  } = thresholds;
 
-  if (nowMs - state.lastHitMs < COOLDOWN_MS) {
+  // 冷卻期間仍保留最新特徵，方便觀察 log，但不允許命中。
+  if (nowMs - state.lastHitMs < cooldownMs) {
     return {
       ...state,
       didHit: false,
-      kneeDownSpeed,
-      drop,
+      windowDy,
+      windowDx,
+      sumAbsDx,
+      sumAbsDy,
+      avgDownSpeed,
+      maxDownSpeed,
+      downFrameRatio,
+      xyRatio,
     };
   }
 
-  if (drop <= KNEE_DROP_RELEASE) {
+  // 動作回到較平穩狀態後，重新開放下一次命中。
+  if (windowDy <= windowDropRelease) {
     state.canHit = true;
   }
 
+  // 用短時間窗特徵一起判斷，避免單幀跳點或左右平移誤觸。
   const ok =
-    state.canHit && drop >= KNEE_DROP_HIT && kneeDownSpeed >= KNEE_SPEED_HIT;
+    state.canHit &&
+    windowDy >= windowDropHit &&
+    (avgDownSpeed >= avgSpeedHit || maxDownSpeed >= peakSpeedHit) &&
+    windowDx <= windowMaxDx &&
+    xyRatio <= maxXyRatio &&
+    downFrameRatio >= downFrameRatioHit;
 
   if (ok) {
     state.canHit = false;
     state.lastHitMs = nowMs;
-    state.highY = kneeY;
 
     return {
       ...state,
       didHit: true,
-      kneeDownSpeed,
-      drop,
+      windowDy,
+      windowDx,
+      sumAbsDx,
+      sumAbsDy,
+      avgDownSpeed,
+      maxDownSpeed,
+      downFrameRatio,
+      xyRatio,
     };
   }
 
   return {
     ...state,
     didHit: false,
-    kneeDownSpeed,
-    drop,
+    windowDy,
+    windowDx,
+    sumAbsDx,
+    sumAbsDy,
+    avgDownSpeed,
+    maxDownSpeed,
+    downFrameRatio,
+    xyRatio,
   };
 }
