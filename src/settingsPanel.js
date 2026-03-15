@@ -91,6 +91,48 @@ function createNumericControl({
   return row;
 }
 
+function createToggleControl({ label, value, onChange }) {
+  const row = document.createElement("div");
+  row.className = "settings-control-row settings-toggle-row";
+
+  const title = document.createElement("div");
+  title.className = "settings-control-label";
+  title.textContent = label;
+
+  const toggleWrap = document.createElement("button");
+  toggleWrap.type = "button";
+  toggleWrap.className = "settings-switch";
+  toggleWrap.setAttribute("role", "switch");
+  toggleWrap.setAttribute("aria-label", label);
+
+  const toggleTrack = document.createElement("span");
+  toggleTrack.className = "settings-switch-track";
+
+  const toggleThumb = document.createElement("span");
+  toggleThumb.className = "settings-switch-thumb";
+  toggleTrack.appendChild(toggleThumb);
+
+  toggleWrap.appendChild(toggleTrack);
+
+  const syncButtonState = (enabled) => {
+    toggleWrap.dataset.enabled = String(enabled);
+    toggleWrap.setAttribute("aria-checked", String(enabled));
+  };
+
+  syncButtonState(value);
+
+  toggleWrap.addEventListener("click", () => {
+    const nextValue = toggleWrap.dataset.enabled !== "true";
+    syncButtonState(nextValue);
+    onChange(nextValue);
+  });
+
+  row.appendChild(title);
+  row.appendChild(toggleWrap);
+
+  return row;
+}
+
 export function bindSoundUI({ rackEl, soundLibrary, zones, zoneSound }) {
   rackEl.innerHTML = "";
 
@@ -140,10 +182,13 @@ export function initSettingsPanel({
   panelEl,
   outputGain,
   visibilityThreshold,
+  drawPoseDebugEnabled,
   onOutputGainChange,
   onVisibilityThresholdChange,
+  onDrawPoseDebugChange,
 }) {
   const controlsEl = panelEl.querySelector("#runtimeControls");
+  const debugControlsEl = panelEl.querySelector("#debugControls");
 
   if (controlsEl) {
     controlsEl.innerHTML = "";
@@ -175,6 +220,17 @@ export function initSettingsPanel({
         toDisplay: (internal) => internal * 100,
         toInternal: (display) => Number(((display / 100)).toFixed(4)),
         onChange: onVisibilityThresholdChange,
+      }),
+      );
+  }
+
+  if (debugControlsEl) {
+    debugControlsEl.innerHTML = "";
+    debugControlsEl.appendChild(
+      createToggleControl({
+        label: "全身節點",
+        value: drawPoseDebugEnabled,
+        onChange: onDrawPoseDebugChange,
       }),
     );
   }

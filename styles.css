@@ -7,7 +7,7 @@
   box-sizing: border-box;
 }
 
-/* 整頁鎖定不捲動 */
+/* ?湧???銝??*/
 html,
 body {
   height: 100%;
@@ -33,7 +33,7 @@ body {
   padding: 12px;
 }
 
-/* 通用：預設隱藏 */
+/* ?嚗?閮剝??*/
 .is-hidden {
   display: none !important;
 }
@@ -45,11 +45,49 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
   margin-bottom: 8px;
   flex: 0 0 auto;
   z-index: 10;
+  min-height: 72px;
+}
+
+.hit-display {
+  flex: 1 1 auto;
+  min-width: 240px;
+  max-width: min(680px, calc(50vw - 180px));
+  margin-right: auto;
+  margin-left: 8px;
+  min-height: 24px;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.hit-display.is-empty::before {
+  content: "";
+}
+
+.hit-text-item {
+  position: relative;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.hit-text-item:not(:last-child)::after {
+  content: "\3001";
+  color: rgba(255, 255, 255, 0.65);
+  margin-left: 2px;
 }
 
 /* Sound  */
@@ -73,13 +111,13 @@ body {
     0 10px 28px rgba(0, 0, 0, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 
-  /* 不要固定 40px，不然 rows 會被壓扁 */
+  /* 銝??箏? 40px嚗???rows ?◤憯? */
   height: auto;
 
-  /* 視窗太窄時允許換行 */
+  /* 閬?憭芰???閮望?銵?*/
   flex-wrap: wrap;
 
-  /* 避免把 topbar 右側擠爆 */
+  /* ?踹???topbar ?喳?? */
   max-width: min(900px, 70vw);
 
   z-index: 10;
@@ -95,7 +133,7 @@ body {
   background: rgba(0, 0, 0, 0.25);
 }
 
-/* 大標題（左腿/右腿） */
+/* 憭扳?憿?撌西/?唾嚗?*/
 .zone-header {
   font-size: 14px;
   font-weight: 800;
@@ -103,7 +141,7 @@ body {
   opacity: 0.95;
 }
 
-/* 內部三列 */
+/* ?折銝? */
 .zone-body {
   display: flex;
   flex-direction: column;
@@ -132,14 +170,14 @@ body {
   outline: none;
 }
 
-/* 下拉選項（option）也黑底白字 */
+/* 銝??賊?嚗ption嚗?暺??賢? */
 .rack-select option,
 .control-select option {
-  background: #0a0a0a; /* 更黑一點，穩定 */
+  background: #0a0a0a; /* ?湧?銝暺?蝛拙? */
   color: #ffffff;
 }
 
-/* 聚焦時的視覺回饋 */
+/* ???閬死?? */
 .rack-select:focus,
 .control-select:focus {
   border-color: rgba(255, 255, 255, 0.38);
@@ -148,18 +186,20 @@ body {
 #toggle {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 84px;
 }
 
 #toggle:hover {
-  transform: translateX(-50%) translateY(-1px);
+  transform: translate(-50%, calc(-50% - 1px));
 }
 
 #toggle:active {
-  transform: translateX(-50%) translateY(0px) scale(0.98);
+  transform: translate(-50%, -50%) scale(0.98);
 }
-/* 你的按鈕 class 在 HTML 裡是 topbar-btn */
-/* 開啟/關閉鏡頭按鈕：玻璃擬態 + 層次感 */
+/* 雿??? class ??HTML 鋆⊥ topbar-btn */
+/* ??/???⊿??嚗???+ 撅斗活??*/
 .topbar-btn {
   display: inline-flex;
   align-items: center;
@@ -193,7 +233,7 @@ body {
     box-shadow 160ms ease,
     filter 160ms ease;
 }
-/* Hover：更亮 + 微浮起 */
+/* Hover嚗鈭?+ 敺格筑韏?*/
 .topbar-btn:hover {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.28);
@@ -204,7 +244,7 @@ body {
   transform: translateY(-1px);
 }
 
-/* Active：按下去 */
+/* Active嚗?銝 */
 .topbar-btn:active {
   transform: translateY(0px) scale(0.98);
   box-shadow:
@@ -212,12 +252,11 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .settings-wrap {
-  position: absolute;
-  left: 0;
-  top: 0;
+  position: relative;
   display: flex;
   align-items: center;
   z-index: 20;
+  flex: 0 0 auto;
 }
 
 .settings-btn {
@@ -264,6 +303,18 @@ body {
   margin-bottom: 14px;
 }
 
+.debug-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.debug-controls:first-of-type {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .settings-control-row {
   display: grid;
   grid-template-columns: 160px 1fr;
@@ -303,7 +354,72 @@ body {
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
 }
 
-/* 讓 soundRack 放進 panel 後改成直向排版 */
+.settings-toggle-row {
+  grid-template-columns: 160px auto;
+}
+
+.settings-switch {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    filter 160ms ease;
+}
+
+.settings-switch:hover {
+  filter: brightness(1.05);
+}
+
+.settings-switch:active {
+  transform: scale(0.98);
+}
+
+.settings-switch-track {
+  position: relative;
+  width: 58px;
+  height: 32px;
+  border-radius: 999px;
+  background: #4caf50;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 6px 20px rgba(0, 0, 0, 0.25);
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.settings-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 29px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #eef5ea;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  transition:
+    left 180ms ease,
+    background 180ms ease;
+}
+
+.settings-switch[data-enabled="false"] .settings-switch-track {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.settings-switch[data-enabled="false"] .settings-switch-thumb {
+  left: 3px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+/* 霈?soundRack ?暸?panel 敺?????*/
 .settings-panel .sound-rack {
   position: static;
   display: grid;
@@ -321,7 +437,7 @@ body {
   -webkit-backdrop-filter: none;
 }
 
-/* 每個左右腿區塊 */
+/* 瘥椰?唾?憛?*/
 .settings-panel .zone-block {
   height: 100%;
   background: rgba(255, 255, 255, 0.04);
@@ -350,15 +466,79 @@ body {
 .settings-panel .rack-select {
   width: 100%;
 }
-/* YT 連結輸入列 */
-.yt-input-row {
+/* YT ???頛詨??*/
+.media-tools {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  width: auto;
+  max-width: min(900px, calc(100vw - 280px));
+  margin-left: auto;
+  min-width: min(520px, 100%);
+}
+
+.midi-library-panel {
+  display: block;
+  width: 100%;
+}
+
+.midi-library-row,
+.yt-input-row {
+  display: grid;
   gap: 10px;
   align-items: center;
 }
 
+.midi-library-row {
+  width: 100%;
+  grid-template-columns:
+    minmax(160px, 180px)
+    minmax(110px, 130px)
+    minmax(180px, 220px)
+    minmax(240px, 320px);
+  justify-content: end;
+}
+
+.yt-input-row {
+  grid-template-columns: minmax(0, 1fr) 56px;
+  min-width: 0;
+}
+
+.midi-control,
+.yt-url,
+.yt-load-btn {
+  min-height: 42px;
+}
+
+.midi-control {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.75);
+  color: rgba(255, 255, 255, 0.95);
+  outline: none;
+}
+
+.midi-control:focus,
+.yt-url:focus {
+  border-color: rgba(255, 255, 255, 0.38);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+
+.midi-song-query {
+  width: 100%;
+}
+
+.midi-category {
+  width: 100%;
+}
+
+.midi-song-select {
+  width: 100%;
+}
+
 .yt-url {
-  width: clamp(220px, 28vw, 450px);
+  width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -368,12 +548,17 @@ body {
 }
 
 .yt-load-btn {
+  width: 56px;
   padding: 10px 14px;
   border-radius: 10px;
   border: 0;
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
   cursor: pointer;
+}
+
+.yt-load-btn:hover {
+  background: rgba(255, 255, 255, 0.26);
 }
 
 /* =========================
@@ -398,7 +583,7 @@ body {
   z-index: 1;
 }
 
-/* 真正的相機顯示框：完整填滿 stage */
+/* ?迤?璈＊蝷箸?嚗??游‵皛?stage */
 .camera-frame {
   position: absolute;
   inset: 0;
@@ -409,7 +594,7 @@ body {
   border-radius: inherit;
 }
 
-/* video/canvas 填滿 stage */
+/* video/canvas 憛急遛 stage */
 #webcam,
 #output {
   position: absolute;
@@ -421,7 +606,7 @@ body {
 }
 
 
-/* 影像鋪滿容器（必要時裁切） */
+/* 敶勗??芣遛摰孵嚗?閬?鋆?嚗?*/
 #webcam {
   object-fit: cover;
   display: block;
@@ -442,15 +627,15 @@ body {
   position: absolute;
   right: 0;
   top: 0;
-  width: 520px;
-  max-width: 40vw;
+  width: min(500px, 26vw);
+  min-width: 420px;
   z-index: 5;
 }
 
 .video-wrapper {
   position: relative;
   width: 100%;
-  /* aspect-ratio: 16 / 11; */
+  aspect-ratio: 16 / 11.5;
   background: #000;
   border-radius: 16px;
   overflow: hidden;
@@ -484,6 +669,7 @@ body {
   bottom: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px;
   background: rgba(0, 0, 0, 0.65);
@@ -503,10 +689,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .seek-container {
-  flex: 1;
+  flex: 1 1 160px;
 }
 
 .slider {
@@ -519,6 +706,132 @@ body {
 
 .slider.seek {
   width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: unset;
+  }
+
+  #toggle {
+    position: static;
+    justify-self: end;
+    transform: none;
+  }
+
+  #toggle:hover {
+    transform: translateY(-1px);
+  }
+
+  #toggle:active {
+    transform: scale(0.98);
+  }
+
+  .media-tools {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    min-width: 0;
+    align-self: stretch;
+    align-items: stretch;
+  }
+
+  .hit-display {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .midi-library-row {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .midi-library-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .yt-input-row {
+    grid-column: 1 / -1;
+  }
+
+  .midi-control,
+  .yt-url {
+    width: 100%;
+  }
+
+  .midi-library-panel,
+  .media-tools {
+    align-items: stretch;
+  }
+
+  .player-card {
+    width: min(100%, 440px);
+    min-width: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  html,
+  body {
+    overflow: auto;
+  }
+
+  body {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr auto;
+    align-items: start;
+  }
+
+  .settings-wrap,
+  .hit-display,
+  .media-tools {
+    grid-column: 1 / -1;
+  }
+
+  .hit-display {
+    min-height: auto;
+  }
+
+  .midi-library-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .midi-song-select,
+  .yt-input-row {
+    grid-column: 1 / -1;
+  }
+
+  .layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .stage {
+    min-height: 52vh;
+  }
+
+  .player-card {
+    position: static;
+    align-self: stretch;
+    width: 100%;
+  }
+
+  .video-wrapper {
+    aspect-ratio: 16 / 9.5;
+  }
 }
 
 .slider::-webkit-slider-thumb {
@@ -550,15 +863,25 @@ body {
 ========================= */
 @media (max-width: 760px) {
   .topbar {
-    justify-content: center;
-    flex-wrap: wrap;
-    padding-top: 46px;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding-top: 0;
   }
 
   .topbar-btn {
     position: static;
     transform: none;
   }
+
+  #toggle {
+    justify-self: stretch;
+  }
+
+  .hit-display {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .sound-rack {
     position: static;
     height: auto;
@@ -568,8 +891,8 @@ body {
   }
 
   .player-card {
-    width: 92vw;
-    max-width: 92vw;
+    width: 100%;
+    max-width: 100%;
   }
   .settings-panel {
     width: 92vw;
@@ -579,8 +902,41 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .hit-text-item {
+    font-size: 16px;
+  }
+
   .settings-control-row {
     grid-template-columns: 1fr;
     gap: 6px;
   }
+
+  .settings-control-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .midi-library-row {
+    grid-template-columns: 1fr;
+  }
+
+  .midi-song-select,
+  .yt-input-row {
+    grid-column: auto;
+  }
+
+  .yt-input-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .controls-bar {
+    gap: 8px;
+  }
+
+  .control-select,
+  .time,
+  .volume-container,
+  .seek-container {
+    width: 100%;
+  }
 }
+

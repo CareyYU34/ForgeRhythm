@@ -12,6 +12,19 @@ import {
   thighLineDistance,
 } from "./math.js";
 
+const POSE_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 7],
+  [0, 4], [4, 5], [5, 6], [6, 8],
+  [9, 10],
+  [11, 12],
+  [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+  [11, 23], [12, 24], [23, 24],
+  [23, 25], [25, 27], [27, 29], [29, 31],
+  [24, 26], [26, 28], [28, 30], [30, 32],
+  [27, 31], [28, 32],
+];
+
 function skipPoints(points, threshold) {
   for (const p of points) {
     if (!isStrictlyNormalizedPoint(p)) return true;
@@ -62,6 +75,7 @@ export function createInitialPoseState() {
       lastHitMs: -Infinity,
       zoneId: "heel",
     },
+    drawPoseDebugEnabled: false,
   };
 }
 
@@ -83,6 +97,51 @@ function drawPose(pointBundle, canvasCtx, getVideoDrawRect) {
   canvasCtx.fill();
 }
 
+function drawPoseLandmarks(
+  landmarks,
+  canvasCtx,
+  getVideoDrawRect,
+  visibilityThreshold,
+) {
+  const rect = getVideoDrawRect();
+  const points = landmarks.map((landmark) => ({
+    x: rect.x + landmark.x * rect.width,
+    y: rect.y + landmark.y * rect.height,
+    visibility: landmark.visibility ?? 1,
+  }));
+
+  canvasCtx.save();
+  canvasCtx.lineWidth = 3;
+  canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+
+  for (const [startIndex, endIndex] of POSE_CONNECTIONS) {
+    const start = points[startIndex];
+    const end = points[endIndex];
+    if (!start || !end) continue;
+    if (
+      start.visibility < visibilityThreshold ||
+      end.visibility < visibilityThreshold
+    ) {
+      continue;
+    }
+
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(start.x, start.y);
+    canvasCtx.lineTo(end.x, end.y);
+    canvasCtx.stroke();
+  }
+
+  canvasCtx.fillStyle = "rgba(255, 64, 64, 0.95)";
+  for (const point of points) {
+    if (point.visibility < visibilityThreshold) continue;
+    canvasCtx.beginPath();
+    canvasCtx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+    canvasCtx.fill();
+  }
+
+  canvasCtx.restore();
+}
+
 export function createPredictWebcam({
   video,
   canvas,
@@ -92,6 +151,7 @@ export function createPredictWebcam({
   getPoseLandmarker,
   playZone,
   zoneSound,
+  onHit,
 }) {
   async function predictWebcam() {
     const poseLandmarker = getPoseLandmarker();
@@ -111,6 +171,7 @@ export function createPredictWebcam({
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (result.landmarks.length === 0) return;
+        const frameHits = [];
 
         // 先解出這一幀會用到的關鍵點，後面手部與膝蓋都共用這批資料。
         const poseLandmarks = result.landmarks[0];
@@ -124,6 +185,15 @@ export function createPredictWebcam({
         const pickedLeftHand = [leftHip, leftHandBase, leftKnee];
         const pickedRightHand = [rightHip, rightHandBase, rightKnee];
 
+        if (state.drawPoseDebugEnabled) {
+          drawPoseLandmarks(
+            poseLandmarks,
+            canvasCtx,
+            getVideoDrawRect,
+            state.visibilityThreshold,
+          );
+        }
+
         // 只要關鍵點失真或可見度不足，就清掉 history，避免髒資料延續到下一幀。
         if (
           skipPoints(pickedLeftHand, state.visibilityThreshold) ||
@@ -133,8 +203,10 @@ export function createPredictWebcam({
           return;
         }
 
-        drawPose(pickedLeftHand, canvasCtx, getVideoDrawRect);
-        drawPose(pickedRightHand, canvasCtx, getVideoDrawRect);
+        if (!state.drawPoseDebugEnabled) {
+          drawPose(pickedLeftHand, canvasCtx, getVideoDrawRect);
+          drawPose(pickedRightHand, canvasCtx, getVideoDrawRect);
+        }
 
         // 這一段保留原本手部命中判斷需要的單幀資料。
         const dtSec = Math.max(1e-4, videoTimeSec - state.preSec);
@@ -328,6 +400,11 @@ export function createPredictWebcam({
             handMetrics: leftHandMetrics,
           });
           playZone("left", state.lastLeftHandZone, zoneSound);
+          frameHits.push({
+            side: "left",
+            zoneId: state.lastLeftHandZone,
+            source: "hand",
+          });
         }
 
         if (state.rightState.didHit) {
@@ -337,6 +414,11 @@ export function createPredictWebcam({
             handMetrics: rightHandMetrics,
           });
           playZone("right", state.lastRightHandZone, zoneSound);
+          frameHits.push({
+            side: "right",
+            zoneId: state.lastRightHandZone,
+            source: "hand",
+          });
         }
 
         // 膝蓋命中時一起印出摘要特徵，方便你後續觀察與調參。
@@ -350,6 +432,11 @@ export function createPredictWebcam({
             xyRatio: state.leftKneeState.xyRatio,
           });
           playZone("left", state.leftKneeState.zoneId, zoneSound);
+          frameHits.push({
+            side: "left",
+            zoneId: state.leftKneeState.zoneId,
+            source: "knee",
+          });
         }
 
         if (state.rightKneeState.didHit) {
@@ -362,6 +449,15 @@ export function createPredictWebcam({
             xyRatio: state.rightKneeState.xyRatio,
           });
           playZone("right", state.rightKneeState.zoneId, zoneSound);
+          frameHits.push({
+            side: "right",
+            zoneId: state.rightKneeState.zoneId,
+            source: "knee",
+          });
+        }
+
+        if (frameHits.length > 0) {
+          onHit?.(frameHits);
         }
 
         state.prevLeftKnee = leftKnee;
