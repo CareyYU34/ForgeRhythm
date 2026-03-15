@@ -483,10 +483,10 @@ body {
 .midi-library-row {
   width: 100%;
   grid-template-columns:
-    minmax(160px, 180px)
-    minmax(110px, 130px)
-    minmax(180px, 220px)
-    minmax(240px, 320px);
+    minmax(120px, 80px)
+    minmax(110px, 30px)
+    minmax(180px, 20px)
+    minmax(200px, 220px);
   justify-content: end;
 }
 
@@ -930,4 +930,3 @@ body {
     width: 100%;
   }
 }
-
