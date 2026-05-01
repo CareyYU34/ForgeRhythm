@@ -28,9 +28,12 @@ export function createDefaultZoneSound() {
   for (const side of ["left", "right"]) {
     for (const z of ZONES) {
       const key = `${side}_${z.id}`;
-      if (z.id === "front") zoneSound[key] = "hihat";
-      if (z.id === "outer") zoneSound[key] = "snare";
-      if (z.id === "inner") zoneSound[key] = "kick";
+      if (z.id === "front" && side === "left") zoneSound[key] = "hihat";
+      if (z.id === "front" && side === "right") zoneSound[key] = "snare";
+
+      if (z.id === "outer"&& side === "left") zoneSound[key] = "snare";
+      if (z.id === "outer" && side === "right") zoneSound[key] = "hihat";
+            
       if (z.id === "heel") zoneSound[key] = "kick";
     }
   }

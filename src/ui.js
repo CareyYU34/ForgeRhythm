@@ -1,3 +1,63 @@
+const HIT_LABELS = {
+  left_front: "左腳正面",
+  left_outer: "左腳外側",
+  left_inner: "左腳內側",
+  left_heel: "左腳跟",
+  right_front: "右腳正面",
+  right_outer: "右腳外側",
+  right_inner: "右腳內側",
+  right_heel: "右腳跟",
+};
+
+function createHitText(hit) {
+  const text = document.createElement("span");
+  text.className = "hit-text-item";
+  text.textContent = hit.label;
+  return text;
+}
+
+export function getHitLabel(side, zoneId) {
+  return HIT_LABELS[`${side}_${zoneId}`] ?? `${side}_${zoneId}`;
+}
+
+export function initHitDisplay(container, maxItems = 3) {
+  if (!container) {
+    return { replaceHits() {} };
+  }
+
+  function render(hits) {
+    container.replaceChildren(...hits.map(createHitText));
+    container.classList.toggle("is-empty", hits.length === 0);
+  }
+
+  function replaceHits(hits) {
+    const nextHits = Array.isArray(hits) ? hits.slice(0, maxItems) : [];
+    render(nextHits);
+  }
+
+  render([]);
+  return { replaceHits };
+}
+
+export function bindCameraToggle({
+  button,
+  state,
+  getPoseLandmarker,
+  startWebcam,
+  stopWebcam,
+}) {
+  button.onclick = async () => {
+    if (!getPoseLandmarker()) return;
+    state.running = !state.running;
+    button.textContent = state.running ? "關閉鏡頭" : "開啟鏡頭";
+    if (state.running) {
+      await startWebcam();
+    } else {
+      stopWebcam();
+    }
+  };
+}
+
 function populateSelect(selectEl, selectedId, soundLibrary) {
   selectEl.innerHTML = "";
   for (const s of soundLibrary) {
@@ -183,9 +243,11 @@ export function initSettingsPanel({
   outputGain,
   visibilityThreshold,
   drawPoseDebugEnabled,
+  showPFOverlay,
   onOutputGainChange,
   onVisibilityThresholdChange,
   onDrawPoseDebugChange,
+  onShowPFOverlayChange,
 }) {
   const controlsEl = panelEl.querySelector("#runtimeControls");
   const debugControlsEl = panelEl.querySelector("#debugControls");
@@ -218,10 +280,10 @@ export function initSettingsPanel({
         displayMax: 100,
         displayStep: 1,
         toDisplay: (internal) => internal * 100,
-        toInternal: (display) => Number(((display / 100)).toFixed(4)),
+        toInternal: (display) => Number((display / 100).toFixed(4)),
         onChange: onVisibilityThresholdChange,
       }),
-      );
+    );
   }
 
   if (debugControlsEl) {
@@ -231,6 +293,14 @@ export function initSettingsPanel({
         label: "全身節點",
         value: drawPoseDebugEnabled,
         onChange: onDrawPoseDebugChange,
+      }),
+    );
+    
+    debugControlsEl.appendChild(
+      createToggleControl({
+        label: "PF 值顯示",
+        value: showPFOverlay,
+        onChange: onShowPFOverlayChange,
       }),
     );
   }

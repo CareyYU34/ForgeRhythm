@@ -30,7 +30,12 @@
       <div class="hit-display" id="hitDisplay" aria-live="polite"></div>
 
       <button id="toggle" class="topbar-btn">關閉鏡頭</button>
-
+      
+      <button id="calibrateBtn" class="topbar-btn calibrate-btn">
+        <i class="fas fa-crosshairs"></i>
+        校準
+      </button>
+      
       <div class="media-tools">
         <div class="midi-library-panel">
           <div class="midi-library-row">
@@ -59,6 +64,50 @@
         <div class="camera-frame">
           <video id="webcam" autoplay playsinline></video>
           <canvas id="output"></canvas>
+        </div>
+
+        <!-- 校準 Overlay -->
+        <div id="calibOverlay" class="calib-overlay is-hidden" aria-live="polite">
+          <button id="calibCancelBtn" class="calib-cancel-btn" aria-label="取消校準">
+            <i class="fas fa-xmark"></i>
+          </button>
+
+          <!-- COUNTDOWN / SNAPSHOT -->
+          <div class="calib-screen" id="calibScreenReady">
+            <div class="calib-countdown-num" id="calibCountdownNum"></div>
+            <p class="calib-instruction" id="calibReadyText"></p>
+          </div>
+
+          <!-- ZONE_REST / STRIKING -->
+          <div class="calib-screen is-hidden" id="calibScreenZone">
+            <p class="calib-zone-label" id="calibZoneLabel"></p>
+
+            <div class="calib-strike-area" id="calibStrikeArea">
+              <!-- REST 模式：倒數 -->
+              <div id="calibRestInfo" class="calib-rest-info">
+                <span class="calib-rest-countdown" id="calibRestCountdown"></span>
+                <span class="calib-rest-hint">秒後開始</span>
+              </div>
+
+              <!-- STRIKING 模式：進度條 -->
+              <div id="calibStrikeProgress" class="calib-strike-progress is-hidden">
+                <div class="calib-progress-track">
+                  <div class="calib-progress-fill" id="calibProgressFill"></div>
+                  <!-- 分隔線（視覺上切出 3 格） -->
+                  <div class="calib-progress-divider" style="left:33.33%"></div>
+                  <div class="calib-progress-divider" style="left:66.66%"></div>
+                </div>
+                <p class="calib-strike-counter" id="calibStrikeCounter">0 / 3</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- DONE -->
+          <div class="calib-screen is-hidden" id="calibScreenDone">
+            <i class="fas fa-circle-check calib-done-icon"></i>
+            <p class="calib-done-text">校準完成</p>
+            <p class="calib-done-sub">系統已記住你的打擊習慣</p>
+          </div>
         </div>
       </div>
 

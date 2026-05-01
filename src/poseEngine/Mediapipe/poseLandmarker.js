@@ -10,7 +10,7 @@ export async function createPoseLandmarker(runningMode = "IMAGE") {
 
   return PoseLandmarker.createFromOptions(fileset, {
     baseOptions: {
-      modelAssetPath: "./Model/pose_landmarker_full.task",
+      modelAssetPath: "./Model/pose_landmarker_heavy.task",//todo: 比較不同model的延遲
       delegate: "GPU",
     },
     runningMode,

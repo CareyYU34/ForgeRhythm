@@ -57,10 +57,13 @@ function avg2(a, b) {
 }
 
 export function handBasePointFromPoseLandmarks(landmarks, side) {
-  if (side === 'L') {
+  if (side === "L") {
     const pinky = landmarks[17];
     const index = landmarks[19];
-    if (!isStrictlyNormalizedPoint(pinky) || !isStrictlyNormalizedPoint(index)) {
+    if (
+      !isStrictlyNormalizedPoint(pinky) ||
+      !isStrictlyNormalizedPoint(index)
+    ) {
       return null;
     }
     return avg2(pinky, index);
@@ -75,7 +78,7 @@ export function handBasePointFromPoseLandmarks(landmarks, side) {
 }
 
 export function pickLegZoneByEntry(prevHand, hand, side, AXIS_RATIO = 1.1) {
-  if (!prevHand) return 'front';
+  if (!prevHand) return "front";
 
   const dx = hand.x - prevHand.x;
   const dy = hand.y - prevHand.y;
@@ -84,11 +87,11 @@ export function pickLegZoneByEntry(prevHand, hand, side, AXIS_RATIO = 1.1) {
   const ay = Math.abs(dy);
 
   if (ay >= ax * AXIS_RATIO) {
-    return 'front';
+    return "front";
   }
 
-  if (side === 'right') return dx < 0 ? 'inner' : 'outer';
-  return dx > 0 ? 'inner' : 'outer';
+  if (side === "right") return dx < 0 ? "inner" : "outer";
+  return dx > 0 ? "inner" : "outer";
 }
 
 export function pushPointHistory(history, point, timeSec, maxSize = 5) {
@@ -207,10 +210,14 @@ export function summarizeHandMotion(history) {
   const segmentCount = history.length - 1;
   const avgSpeed = windowDistance / windowDt;
   const xyRatio = sumAbsDx / Math.max(sumAbsDy, 1e-4);
-  const xConsistency = segmentCount > 0 ? consistentXSegments / segmentCount : 0;
-  const yConsistency = segmentCount > 0 ? consistentYSegments / segmentCount : 0;
-  const xDominantRatio = segmentCount > 0 ? xDominantSegments / segmentCount : 0;
-  const yDominantRatio = segmentCount > 0 ? yDominantSegments / segmentCount : 0;
+  const xConsistency =
+    segmentCount > 0 ? consistentXSegments / segmentCount : 0;
+  const yConsistency =
+    segmentCount > 0 ? consistentYSegments / segmentCount : 0;
+  const xDominantRatio =
+    segmentCount > 0 ? xDominantSegments / segmentCount : 0;
+  const yDominantRatio =
+    segmentCount > 0 ? yDominantSegments / segmentCount : 0;
 
   return {
     windowDt,

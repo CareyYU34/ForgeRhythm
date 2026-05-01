@@ -1,6 +1,4 @@
-export function emaSmooth(prev, PF, alpha) {
-  return alpha * PF + (1 - alpha) * prev;
-}
+
 
 export function monitoringTriggerConditions(
   State,
