@@ -285,6 +285,7 @@ async function bootstrap() {
       phase === calibration.PHASES.DONE
     ) {
       state._calibrationLogged = false;
+      state.calibrationProfile = null;
       calibration.start();
       calibrateBtn.classList.add("is-active");
       calibrateBtn.innerHTML = '<i class="fas fa-crosshairs"></i> 校準中';

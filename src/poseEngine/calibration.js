@@ -531,6 +531,7 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
       baselineRight = createSideBaseline();
       currentZoneIndex = 0;
       strikeCount = 0;
+      resetStrikeDetection();
       phase = Phase.FRONT_SNAPSHOT;
       emitStatus({ countdown: SNAPSHOT_SEC });
     },
