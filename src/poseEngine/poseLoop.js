@@ -12,6 +12,7 @@ import {
   thighLineDistance,
 } from "./math.js";
 import { getZoneParams } from "./calibrationProfile.js";
+import { createHitEffectManager } from "./hitEffects.js";
 
 const POSE_CONNECTIONS = [
   [0, 1],
@@ -57,7 +58,9 @@ const KNEE_HISTORY_SIZE = 5;
 const HAND_FRONT_DOMINANT_RATIO = 1.2;
 const HAND_SIDE_DOMINANT_RATIO = 1.2;
 const HAND_MIN_ZONE_CONSISTENCY = 0.55;
-const KNEE_THRESHOLDS = {
+
+// 硬編碼靜態預設值（未校準時使用）
+const KNEE_THRESHOLDS_DEFAULT = {
   windowDropHit: 0.028,
   windowDropRelease: 0.012,
   avgSpeedHit: 0.32,
@@ -67,6 +70,21 @@ const KNEE_THRESHOLDS = {
   maxXyRatio: 0.85,
   downFrameRatioHit: 0.7,
 };
+
+/**
+ * 取得膝蓋閾值：已校準時用動態值覆蓋 windowDropHit/windowDropRelease，
+ * 其餘欄位仍使用靜態預設。
+ */
+function getKneeThresholds(profile, side) {
+  const base = KNEE_THRESHOLDS_DEFAULT;
+  if (!profile?.knee?.[side]) return base;
+  const k = profile.knee[side];
+  return {
+    ...base,
+    windowDropHit: k.windowDropHit,
+    windowDropRelease: k.windowDropRelease,
+  };
+}
 
 function skipPoints(points, threshold) {
   for (const p of points) {
@@ -107,7 +125,7 @@ export function createInitialPoseState() {
     prevRightKnee: null,
     leftKneeHistory: [],
     rightKneeHistory: [],
-    visibilityThreshold: 0.75,
+    visibilityThreshold: 0.75, // landmark 可見度閾值，低於這個值的點會被視為失真點，觸發重置機制
     leftKneeState: {
       canHit: true,
       lastHitMs: -Infinity,
@@ -311,7 +329,9 @@ export function createPredictWebcam({
   zoneSound,
   onHit,
   onFrame,
+  hitEffectManager,
 }) {
+  const _fx = hitEffectManager ?? createHitEffectManager();
   async function predictWebcam() {
     const poseLandmarker = getPoseLandmarker();
     if (!poseLandmarker) return;
@@ -530,7 +550,7 @@ export function createPredictWebcam({
               state.leftKneeState,
               leftKneeMetrics,
               webTimeMs,
-              KNEE_THRESHOLDS,
+              getKneeThresholds(profile, "left"),
             );
           }
 
@@ -539,7 +559,7 @@ export function createPredictWebcam({
               state.rightKneeState,
               rightKneeMetrics,
               webTimeMs,
-              KNEE_THRESHOLDS,
+              getKneeThresholds(profile, "right"),
             );
           }
         }
@@ -550,7 +570,15 @@ export function createPredictWebcam({
           const zone = state.leftLockedZone ?? state.lastLeftHandZone;
           playZone("left", zone, zoneSound);
           frameHits.push({ side: "left", zoneId: zone, source: "hand" });
-          // 更新穩定 zone（供下次 fallback 使用），然後解鎖
+          _fx.pushHandHit({
+            side: "left",
+            zone,
+            hip: pickedLeftHand[0],
+            hand: pickedLeftHand[1],
+            knee: pickedLeftHand[2],
+            strength: Math.min(1, leftHandSpeed * 2),
+            getVideoDrawRect,
+          });
           state.lastLeftHandZone = zone;
           state.leftZoneLocked = false;
           state.leftLockedZone = null;
@@ -560,6 +588,15 @@ export function createPredictWebcam({
           const zone = state.rightLockedZone ?? state.lastRightHandZone;
           playZone("right", zone, zoneSound);
           frameHits.push({ side: "right", zoneId: zone, source: "hand" });
+          _fx.pushHandHit({
+            side: "right",
+            zone,
+            hip: pickedRightHand[0],
+            hand: pickedRightHand[1],
+            knee: pickedRightHand[2],
+            strength: Math.min(1, rightHandSpeed * 2),
+            getVideoDrawRect,
+          });
           state.lastRightHandZone = zone;
           state.rightZoneLocked = false;
           state.rightLockedZone = null;
@@ -572,6 +609,12 @@ export function createPredictWebcam({
             zoneId: state.leftKneeState.zoneId,
             source: "knee",
           });
+          _fx.pushKneeHit({
+            side: "left",
+            knee: leftKnee,
+            strength: 0.85,
+            getVideoDrawRect,
+          });
         }
 
         if (state.rightKneeState.didHit) {
@@ -581,11 +624,19 @@ export function createPredictWebcam({
             zoneId: state.rightKneeState.zoneId,
             source: "knee",
           });
+          _fx.pushKneeHit({
+            side: "right",
+            knee: rightKnee,
+            strength: 0.85,
+            getVideoDrawRect,
+          });
         }
 
         if (frameHits.length > 0) {
           onHit?.(frameHits);
         }
+
+        _fx.draw(canvasCtx, webTimeMs);
 
         state.prevLeftKnee = leftKnee;
         state.prevRightKnee = rightKnee;

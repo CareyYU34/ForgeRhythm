@@ -22,10 +22,10 @@ const TUNING = {
 
   // PF_RELEASE = restingPF × K2（手離開多遠才算釋放，允許下一次打擊）
   // 注意：實際使用時取所有 zone 中最大的 PF_RELEASE 作為統一門檻
-  K2: 2.5,
+  K2: 2.0,
 
   // SPEED_HIT = peakSpeed_mean × K3（速度門檻為校準打擊速度的百分比）
-  K3: 0.40,
+  K3: 0.30,
 
   // COOLDOWN_MS = durationMs_mean × K4（冷卻時間為校準打擊時長的百分比）
   K4: 0.80,

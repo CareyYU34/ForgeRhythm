@@ -47,11 +47,27 @@ const calibScreenDone = document.getElementById("calibScreenDone");
 const calibCountdownNum = document.getElementById("calibCountdownNum");
 const calibReadyText = document.getElementById("calibReadyText");
 const calibZoneLabel = document.getElementById("calibZoneLabel");
-const calibRestInfo = document.getElementById("calibRestInfo");
-const calibRestCountdown = document.getElementById("calibRestCountdown");
 const calibStrikeProgress = document.getElementById("calibStrikeProgress");
 const calibProgressFill = document.getElementById("calibProgressFill");
 const calibStrikeCounter = document.getElementById("calibStrikeCounter");
+const calibVisualImg = document.getElementById("calibVisualImg");
+
+// ── 各階段示範圖片（檔案放在 public/ 資料夾） ──
+const CALIB_VISUALS = {
+  front_snapshot: "src/public/靜正面.png",
+  outer_snapshot: "src/public/靜側面.png",
+  right_front: "src/public/右正面.gif",
+  left_front: "src/public/左正面.gif",
+  right_outer: "src/public/右側面.gif",
+  left_outer: "src/public/左側面.gif",
+};
+
+/** GIF 需要先清空 src 再賦值，才能從頭播放 */
+function setCalibVisual(key) {
+  const src = CALIB_VISUALS[key] ?? "";
+  calibVisualImg.src = "";
+  calibVisualImg.src = src;
+}
 
 const ZONE_LABEL_MAP = {
   right_front: "右大腿正面",
@@ -62,21 +78,20 @@ const ZONE_LABEL_MAP = {
 
 // ── 校準 Overlay 控制 ────────────────────────────────────────────────────────
 
-/** 切換只顯示指定的 screen，其他都隱藏 */
 function showCalibScreen(id) {
   [calibScreenReady, calibScreenZone, calibScreenDone].forEach((el) => {
     el.classList.toggle("is-hidden", el.id !== id);
   });
+  // DONE 畫面時隱藏圖片區
+  calibOverlay.classList.toggle("is-done", id === "calibScreenDone");
 }
 
-/** 更新打擊進度條與計數器 */
 function updateCalibProgress(strikeCount, strikesPerZone) {
   const pct = strikesPerZone > 0 ? (strikeCount / strikesPerZone) * 100 : 0;
   calibProgressFill.style.width = `${pct}%`;
   calibStrikeCounter.textContent = `${strikeCount} / ${strikesPerZone}`;
 }
 
-/** 根據校準引擎的 status 更新整個 overlay */
 function onCalibStatus({
   phase,
   zone,
@@ -95,30 +110,26 @@ function onCalibStatus({
 
   calibOverlay.classList.remove("is-hidden");
 
-  // 正面靜置快照：身體基準 + 正面 baseline 收斂
   if (phase === PHASES.FRONT_SNAPSHOT) {
+    setCalibVisual("front_snapshot");
     showCalibScreen("calibScreenReady");
-    calibCountdownNum.classList.remove("is-scanning");
     calibCountdownNum.textContent = countdown ?? "";
     calibReadyText.textContent = "請將雙手自然放在大腿正面上";
     return;
   }
 
-  // 側面靜置快照：側面 baseline 收斂
   if (phase === PHASES.OUTER_SNAPSHOT) {
+    setCalibVisual("outer_snapshot");
     showCalibScreen("calibScreenReady");
-    calibCountdownNum.classList.remove("is-scanning");
     calibCountdownNum.textContent = countdown ?? "";
     calibReadyText.textContent = "請將雙手自然放在大腿側面上";
     return;
   }
 
   if (phase === PHASES.STRIKING) {
+    if (strikeCount === 0) setCalibVisual(zone); // zone 切換時重播 GIF
     showCalibScreen("calibScreenZone");
     calibZoneLabel.textContent = `打擊 ${ZONE_LABEL_MAP[zone] ?? zone}`;
-    // 進度條模式
-    calibRestInfo.classList.add("is-hidden");
-    calibStrikeProgress.classList.remove("is-hidden");
     updateCalibProgress(strikeCount, strikesPerZone);
     return;
   }
