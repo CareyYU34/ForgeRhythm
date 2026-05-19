@@ -1,7 +1,7 @@
 /**
  * hitEffects.js
  *
- * 打擊視覺效果模組（強化版）。
+ * 打擊視覺效果模組。
  * 完全獨立於偵測邏輯，只負責「收到 hit 事件 → 在 canvas 上畫動畫」。
  *
  * 使用方式：
@@ -11,26 +11,23 @@
  *   fx.draw(canvasCtx, nowMs);
  */
 
-const RIPPLE_DURATION_MS = 1100;
+const HAND_DURATION_MS = 1100;
 const KICK_DURATION_MS = 950;
 
 // ── 色彩主題（左手 vs 右手 vs 膝蓋）────────────────────────────────────────
 
 const SIDE_COLORS = {
   left: {
-    primary: [0, 220, 255], // 青藍
-    secondary: [80, 255, 220], // 翠綠
-    glow: "rgba(0, 220, 255, 0.55)",
+    primary: [0, 220, 255],
+    secondary: [80, 255, 220],
   },
   right: {
-    primary: [255, 60, 160], // 洋紅
-    secondary: [255, 160, 60], // 橘
-    glow: "rgba(255, 60, 160, 0.55)",
+    primary: [255, 60, 160],
+    secondary: [255, 160, 60],
   },
   knee: {
-    primary: [255, 230, 0], // 亮黃
-    secondary: [255, 130, 0], // 橘黃
-    glow: "rgba(255, 220, 0, 0.6)",
+    primary: [255, 230, 0],
+    secondary: [255, 130, 0],
   },
 };
 
@@ -43,18 +40,28 @@ function toCanvas(pt, rect) {
   };
 }
 
+function isReasonableCanvasPx(px, rect) {
+  const margin = 0.2;
+  return (
+    px.x >= rect.x - rect.width * margin &&
+    px.x <= rect.x + rect.width * (1 + margin) &&
+    px.y >= rect.y - rect.height * margin &&
+    px.y <= rect.y + rect.height * (1 + margin)
+  );
+}
+
 function rgba([r, g, b], a) {
   return `rgba(${r},${g},${b},${a.toFixed(3)})`;
 }
 
-function easeOut(t) {
-  return 1 - (1 - t) * (1 - t);
-}
 function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
 }
 function easeOutQuart(t) {
   return 1 - Math.pow(1 - t, 4);
+}
+function easeOut(t) {
+  return 1 - (1 - t) * (1 - t);
 }
 
 // ── 爆炸粒子群 ───────────────────────────────────────────────────────────────
@@ -161,83 +168,23 @@ function drawEnergyLines(ctx, cx, cy, t, primaryColor, secondary, strength) {
   ctx.restore();
 }
 
-// ── 大腿漣漪波（強化版）────────────────────────────────────────────────────────
+// ── 手部命中特效（衝擊點：閃光 + 能量線 + 同心環 + 粒子）────────────────────
 
-function drawRipple(ctx, ef, t) {
-  const { hipPx, kneePx, handPx, strength, side } = ef;
+function drawHandHit(ctx, ef, t) {
+  const { handPx, strength, side } = ef;
   const colors = SIDE_COLORS[side] ?? SIDE_COLORS.right;
   const primary = colors.primary;
   const secondary = colors.secondary;
 
-  const decay = (1 - t) * (1 - t);
-
-  const dx = kneePx.x - hipPx.x;
-  const dy = kneePx.y - hipPx.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 1) return;
-
-  const tx = dx / len;
-  const ty = dy / len;
-  const nx = -ty;
-  const ny = tx;
-
-  const apx = handPx.x - hipPx.x;
-  const apy = handPx.y - hipPx.y;
-  const handFrac = (apx * tx + apy * ty) / len;
-
   ctx.save();
-
-  // ── 波形本體（雙層：外層光暈 + 內層實線）──
-  for (let layer = 0; layer < 2; layer++) {
-    const STEPS = 90;
-    const AMP = (layer === 0 ? 28 : 18) * strength;
-    const isGlow = layer === 0;
-
-    ctx.beginPath();
-    for (let i = 0; i <= STEPS; i++) {
-      const frac = i / STEPS;
-      const lx = hipPx.x + tx * len * frac;
-      const ly = hipPx.y + ty * len * frac;
-      const distFromHand = Math.abs(frac - handFrac);
-      const travelRadius = t * 1.6 + 0.05;
-      const envelope = Math.max(0, 1 - distFromHand / travelRadius);
-      const wave =
-        Math.sin((distFromHand * 22 - t * 16) * Math.PI) * decay * envelope;
-
-      const px = lx + nx * AMP * wave;
-      const py = ly + ny * AMP * wave;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-
-    if (isGlow) {
-      ctx.strokeStyle = rgba(primary, 0.18 + decay * 0.25);
-      ctx.lineWidth = 7 + decay * strength * 7;
-      ctx.shadowColor = rgba(primary, 0.8);
-      ctx.shadowBlur = 12;
-    } else {
-      ctx.strokeStyle = rgba(primary, 0.5 + decay * 0.5);
-      ctx.lineWidth = 2 + decay * strength * 3;
-      ctx.shadowBlur = 0;
-    }
-    ctx.stroke();
-  }
-
-  ctx.shadowBlur = 0;
-
-  // ── 衝擊點特效 ──
-  const hx = handPx.x;
-  const hy = handPx.y;
-
-  drawFlash(ctx, hx, hy, t, primary, strength);
-  drawEnergyLines(ctx, hx, hy, t, primary, secondary, strength);
-  drawImpactRings(ctx, hx, hy, t, primary, strength);
+  drawFlash(ctx, handPx.x, handPx.y, t, primary, strength);
+  drawEnergyLines(ctx, handPx.x, handPx.y, t, primary, secondary, strength);
+  drawImpactRings(ctx, handPx.x, handPx.y, t, primary, strength);
   drawParticles(ctx, ef.particles, t);
-
   ctx.restore();
 }
 
-// ── 膝蓋踢（強化版）──────────────────────────────────────────────────────────
+// ── 膝蓋踢 ───────────────────────────────────────────────────────────────────
 
 function drawKick(ctx, ef, t) {
   const { kneePx, strength } = ef;
@@ -282,7 +229,6 @@ function drawKick(ctx, ef, t) {
 
   ctx.shadowBlur = 0;
 
-  // 衝擊點特效
   drawFlash(ctx, kneePx.x, kneePx.y, t, primary, strength);
   drawImpactRings(ctx, kneePx.x, kneePx.y, t, primary, strength);
   drawParticles(ctx, ef.particles, t);
@@ -304,48 +250,43 @@ export function createHitEffectManager() {
     strength,
     getVideoDrawRect,
   }) {
-    if (!hip || !hand || !knee) return;
+    if (!hand) return;
     const rect = getVideoDrawRect();
+    const handPx = toCanvas(hand, rect);
+
+    if (!isReasonableCanvasPx(handPx, rect)) return;
+
     const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
     const colors = SIDE_COLORS[side] ?? SIDE_COLORS.right;
 
     effects.push({
-      type: "ripple",
+      type: "hand",
       side,
       zone,
-      hipPx: toCanvas(hip, rect),
-      handPx: toCanvas(hand, rect),
-      kneePx: toCanvas(knee, rect),
+      handPx,
       strength: str,
-      particles: createParticles(
-        rect.x + hand.x * rect.width,
-        rect.y + hand.y * rect.height,
-        [colors.primary, colors.secondary],
-        16,
-      ),
+      particles: createParticles(handPx.x, handPx.y, [colors.primary, colors.secondary], 16),
       startMs: performance.now(),
-      durationMs: RIPPLE_DURATION_MS,
+      durationMs: HAND_DURATION_MS,
     });
   }
 
   function pushKneeHit({ side, knee, strength, getVideoDrawRect }) {
     if (!knee) return;
     const rect = getVideoDrawRect();
-    const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
     const cx = rect.x + knee.x * rect.width;
     const cy = rect.y + knee.y * rect.height;
+
+    if (!isReasonableCanvasPx({ x: cx, y: cy }, rect)) return;
+
+    const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
 
     effects.push({
       type: "kick",
       side,
       kneePx: { x: cx, y: cy },
       strength: str,
-      particles: createParticles(
-        cx,
-        cy,
-        [SIDE_COLORS.knee.primary, SIDE_COLORS.knee.secondary],
-        18,
-      ),
+      particles: createParticles(cx, cy, [SIDE_COLORS.knee.primary, SIDE_COLORS.knee.secondary], 18),
       startMs: performance.now(),
       durationMs: KICK_DURATION_MS,
     });
@@ -364,7 +305,7 @@ export function createHitEffectManager() {
       }
 
       ctx.save();
-      if (ef.type === "ripple") drawRipple(ctx, ef, t);
+      if (ef.type === "hand") drawHandHit(ctx, ef, t);
       else if (ef.type === "kick") drawKick(ctx, ef, t);
       ctx.restore();
     }

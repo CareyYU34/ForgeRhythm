@@ -11,7 +11,7 @@ import {
   summarizeKneeMotion,
   thighLineDistance,
 } from "./math.js";
-import { getZoneParams } from "./calibrationProfile.js";
+import { calcKneeRisingAdj, getZoneParams } from "./calibrationProfile.js";
 import { createHitEffectManager } from "./hitEffects.js";
 
 const POSE_CONNECTIONS = [
@@ -53,6 +53,19 @@ const POSE_CONNECTIONS = [
 ];
 
 // ── 將 knee / hand 相關常數從幀循環內移至模組頂層，避免每幀重建物件 ──
+
+// Hip / Knee EMA 平滑係數（0 = 完全不動，1 = 無平滑）
+const HIP_KNEE_EMA_ALPHA = 0.6;
+
+/** EMA 平滑單一座標軸 */
+function emaPoint(prev, curr, alpha) {
+  if (!prev) return { x: curr.x, y: curr.y };
+  return {
+    x: alpha * curr.x + (1 - alpha) * prev.x,
+    y: alpha * curr.y + (1 - alpha) * prev.y,
+  };
+}
+
 const HAND_HISTORY_SIZE = 5;
 const KNEE_HISTORY_SIZE = 5;
 const HAND_FRONT_DOMINANT_RATIO = 1.2;
@@ -104,6 +117,11 @@ function clearTrackingHistory(state) {
   state.leftKneeHistory = [];
   state.rightKneeHistory = [];
   state.preSec = 0;
+  // Hip / Knee EMA：遮蔽失真後重置，避免殘留舊值拉偏下一輪平滑
+  state.emaLeftHip = null;
+  state.emaRightHip = null;
+  state.emaLeftKnee = null;
+  state.emaRightKnee = null;
 }
 
 export function createInitialPoseState() {
@@ -119,20 +137,20 @@ export function createInitialPoseState() {
     lastRightHandZone: "front", // 上次穩定的右手 zone（用於 zone 鎖定失敗時的 fallback）
     leftThighCordon: null, // 左大腿PF數據（用於 hit 判斷）
     rightThighCordon: null, // 右大腿PF數據（用於 hit 判斷）
-    rightState: { canHit: true, lastHitMs: -Infinity },
-    leftState: { canHit: true, lastHitMs: -Infinity },
+    rightState: { canHit: false, lastHitMs: -Infinity },
+    leftState: { canHit: false, lastHitMs: -Infinity },
     prevLeftKnee: null,
     prevRightKnee: null,
     leftKneeHistory: [],
     rightKneeHistory: [],
     visibilityThreshold: 0.75, // landmark 可見度閾值，低於這個值的點會被視為失真點，觸發重置機制
     leftKneeState: {
-      canHit: true,
+      canHit: false,
       lastHitMs: -Infinity,
       zoneId: "heel",
     },
     rightKneeState: {
-      canHit: true,
+      canHit: false,
       lastHitMs: -Infinity,
       zoneId: "heel",
     },
@@ -147,6 +165,12 @@ export function createInitialPoseState() {
 
     // ── 校準 profile（null = 未校準，不發聲）──
     calibrationProfile: null,
+
+    // ── Hip / Knee EMA 平滑儲存（null = 尚未初始化，下一幀直接採用原始值）──
+    emaLeftHip: null,
+    emaRightHip: null,
+    emaLeftKnee: null,
+    emaRightKnee: null,
   };
 }
 
@@ -386,6 +410,17 @@ export function createPredictWebcam({
           return;
         }
 
+        // ── Hip / Knee EMA 平滑（同 PF 的 EMA 邏輯，減少 landmark 抖動對 PF 的影響）──
+        state.emaLeftHip  = emaPoint(state.emaLeftHip,  leftHip,  HIP_KNEE_EMA_ALPHA);
+        state.emaRightHip = emaPoint(state.emaRightHip, rightHip, HIP_KNEE_EMA_ALPHA);
+        state.emaLeftKnee  = emaPoint(state.emaLeftKnee,  leftKnee,  HIP_KNEE_EMA_ALPHA);
+        state.emaRightKnee = emaPoint(state.emaRightKnee, rightKnee, HIP_KNEE_EMA_ALPHA);
+
+        // 用平滑後的 hip/knee 取代原始值，供 thighLineDistance 計算；
+        // handBase 仍使用原始值（手部自己有 PF_SMOOTH_ALPHA 平滑）。
+        const smoothedLeftHand  = [state.emaLeftHip,  leftHandBase,  state.emaLeftKnee];
+        const smoothedRightHand = [state.emaRightHip, rightHandBase, state.emaRightKnee];
+
         if (!state.drawPoseDebugEnabled) {
           drawPose(pickedLeftHand, canvasCtx, getVideoDrawRect);
           drawPose(pickedRightHand, canvasCtx, getVideoDrawRect);
@@ -396,11 +431,12 @@ export function createPredictWebcam({
         const prevLeftHandPt = state.prevLeftHand;
         const prevRightHandPt = state.prevRightHand;
 
-        state.leftThighCordon = thighLineDistance(pickedLeftHand);
-        state.rightThighCordon = thighLineDistance(pickedRightHand);
+        state.leftThighCordon = thighLineDistance(smoothedLeftHand);
+        state.rightThighCordon = thighLineDistance(smoothedRightHand);
         state.prevLeftHand = pickedLeftHand[1];
         state.prevRightHand = pickedRightHand[1];
         state.preSec = videoTimeSec;
+
         // ── PF 值顯示（overlay debug）──
         if (state.showPFOverlay) {
           drawPFOverlay({
@@ -412,6 +448,7 @@ export function createPredictWebcam({
             nowMs: webTimeMs,
           });
         }
+
         // 手部速度（單幀）
         const leftHandSpeed = prevLeftHandPt
           ? Math.hypot(
@@ -464,9 +501,17 @@ export function createPredictWebcam({
           const profile = state.calibrationProfile;
           const PF_RELEASE_UNIFIED = profile.PF_RELEASE_UNIFIED;
 
+          // ── 膝蓋上升補償量（每幀計算，用平滑後的 knee y）──
+          // 提膝時 emaKnee.y < kneeBaseline.y，calcKneeRisingAdj 回傳正值。
+          // 這個補償量會同步疊加到 PF_HIT 和 PF_RELEASE，
+          // 讓大腿線旋轉造成的 PF 幾何漂移無法穿越門檻，防止誤觸發。
+          const leftKneeAdj  = calcKneeRisingAdj(profile, "left",  state.emaLeftKnee?.y  ?? leftKnee.y);
+          const rightKneeAdj = calcKneeRisingAdj(profile, "right", state.emaRightKnee?.y ?? rightKnee.y);
+
           // ── 右手：Release reset → 清 history + 解鎖 zone ──
           const rightPF = state.rightThighCordon?.PF;
-          if (rightPF != null && rightPF > PF_RELEASE_UNIFIED) {
+          // 右手 release 判斷也要加上補償量，確保 release 條件與 hit 條件一致
+          if (rightPF != null && rightPF > PF_RELEASE_UNIFIED + rightKneeAdj) {
             if (!state.rightState.canHit) {
               // 剛從打擊狀態回到釋放狀態，清空 history 開始新循環
               state.rightHandHistory = [];
@@ -488,7 +533,8 @@ export function createPredictWebcam({
 
           // ── 左手：Release reset → 清 history + 解鎖 zone ──
           const leftPF = state.leftThighCordon?.PF;
-          if (leftPF != null && leftPF > PF_RELEASE_UNIFIED) {
+          // 左手 release 判斷同樣加上補償量
+          if (leftPF != null && leftPF > PF_RELEASE_UNIFIED + leftKneeAdj) {
             if (!state.leftState.canHit) {
               state.leftHandHistory = [];
               state.leftZoneLocked = false;
@@ -507,15 +553,15 @@ export function createPredictWebcam({
             state.leftZoneLocked = true;
           }
 
-          // ── 右手：動態門檻 hit 判斷 ──
+          // ── 右手：動態門檻 hit 判斷（疊加膝蓋補償）──
           const rightZone = state.rightLockedZone ?? state.lastRightHandZone;
           const rightParams = getZoneParams(profile, "right", rightZone);
           if (rightParams) {
             state.rightState = monitoringTriggerConditions(
               state.rightState,
               state.rightThighCordon,
-              rightParams.PF_HIT,
-              rightParams.PF_RELEASE,
+              rightParams.PF_HIT     + rightKneeAdj, // ← 提膝時門檻跟著升高
+              rightParams.PF_RELEASE + rightKneeAdj, // ← 確保 release 條件一致
               webTimeMs,
               rightParams.COOLDOWN_MS,
               rightHandSpeed,
@@ -523,15 +569,15 @@ export function createPredictWebcam({
             );
           }
 
-          // ── 左手：動態門檻 hit 判斷 ──
+          // ── 左手：動態門檻 hit 判斷（疊加膝蓋補償）──
           const leftZone = state.leftLockedZone ?? state.lastLeftHandZone;
           const leftParams = getZoneParams(profile, "left", leftZone);
           if (leftParams) {
             state.leftState = monitoringTriggerConditions(
               state.leftState,
               state.leftThighCordon,
-              leftParams.PF_HIT,
-              leftParams.PF_RELEASE,
+              leftParams.PF_HIT     + leftKneeAdj, // ← 提膝時門檻跟著升高
+              leftParams.PF_RELEASE + leftKneeAdj, // ← 確保 release 條件一致
               webTimeMs,
               leftParams.COOLDOWN_MS,
               leftHandSpeed,
@@ -570,15 +616,17 @@ export function createPredictWebcam({
           const zone = state.leftLockedZone ?? state.lastLeftHandZone;
           playZone("left", zone, zoneSound);
           frameHits.push({ side: "left", zoneId: zone, source: "hand" });
-          _fx.pushHandHit({
-            side: "left",
-            zone,
-            hip: pickedLeftHand[0],
-            hand: pickedLeftHand[1],
-            knee: pickedLeftHand[2],
-            strength: Math.min(1, leftHandSpeed * 2),
-            getVideoDrawRect,
-          });
+          if (zoneSound[`left_${zone}`] !== "none") {
+            _fx.pushHandHit({
+              side: "left",
+              zone,
+              hip: pickedLeftHand[0],
+              hand: pickedLeftHand[1],
+              knee: pickedLeftHand[2],
+              strength: Math.min(1, leftHandSpeed * 2),
+              getVideoDrawRect,
+            });
+          }
           state.lastLeftHandZone = zone;
           state.leftZoneLocked = false;
           state.leftLockedZone = null;
@@ -588,15 +636,17 @@ export function createPredictWebcam({
           const zone = state.rightLockedZone ?? state.lastRightHandZone;
           playZone("right", zone, zoneSound);
           frameHits.push({ side: "right", zoneId: zone, source: "hand" });
-          _fx.pushHandHit({
-            side: "right",
-            zone,
-            hip: pickedRightHand[0],
-            hand: pickedRightHand[1],
-            knee: pickedRightHand[2],
-            strength: Math.min(1, rightHandSpeed * 2),
-            getVideoDrawRect,
-          });
+          if (zoneSound[`right_${zone}`] !== "none") {
+            _fx.pushHandHit({
+              side: "right",
+              zone,
+              hip: pickedRightHand[0],
+              hand: pickedRightHand[1],
+              knee: pickedRightHand[2],
+              strength: Math.min(1, rightHandSpeed * 2),
+              getVideoDrawRect,
+            });
+          }
           state.lastRightHandZone = zone;
           state.rightZoneLocked = false;
           state.rightLockedZone = null;
@@ -609,12 +659,14 @@ export function createPredictWebcam({
             zoneId: state.leftKneeState.zoneId,
             source: "knee",
           });
-          _fx.pushKneeHit({
-            side: "left",
-            knee: leftKnee,
-            strength: 0.85,
-            getVideoDrawRect,
-          });
+          if (zoneSound[`left_${state.leftKneeState.zoneId}`] !== "none") {
+            _fx.pushKneeHit({
+              side: "left",
+              knee: leftKnee,
+              strength: 0.85,
+              getVideoDrawRect,
+            });
+          }
         }
 
         if (state.rightKneeState.didHit) {
@@ -624,12 +676,14 @@ export function createPredictWebcam({
             zoneId: state.rightKneeState.zoneId,
             source: "knee",
           });
-          _fx.pushKneeHit({
-            side: "right",
-            knee: rightKnee,
-            strength: 0.85,
-            getVideoDrawRect,
-          });
+          if (zoneSound[`right_${state.rightKneeState.zoneId}`] !== "none") {
+            _fx.pushKneeHit({
+              side: "right",
+              knee: rightKnee,
+              strength: 0.85,
+              getVideoDrawRect,
+            });
+          }
         }
 
         if (frameHits.length > 0) {

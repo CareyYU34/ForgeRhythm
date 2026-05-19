@@ -46,6 +46,15 @@ const TUNING = {
 
   // 校準品質判斷：peakHandSpeed 變異係數超過此值則警告
   PEAK_SPEED_CV_WARN: 0.50,
+
+  // ── 膝蓋補償係數 ──────────────────────────────────────────────────────────
+  // 膝蓋每上升 1 個 normalized 單位，PF_HIT / PF_RELEASE 門檻同步增加的量。
+  // 目的：抵消提膝時大腿線旋轉造成的 PF 幾何漂移，避免誤觸發手部打擊。
+  //
+  // 推導：提膝 Δy ≈ 0.1 時，PF 漂移約 0.05~0.15（依大腿長度而定）。
+  // K_KNEE = 1.8 → Δy=0.1 時補償 +0.18，安全覆蓋大多數體型。
+  // 若發現補償過度（手打腿時沒聲音）可降低；補償不足仍誤觸發則提高。
+  K_KNEE: 1.8,
 };
 
 // ─── 統計工具 ───────────────────────────────────────────────────────────────
@@ -176,6 +185,14 @@ export function buildCalibrationProfile(session) {
     calibratedAt: session.timestamp ?? new Date().toISOString(),
     sessionId: session.sessionId ?? null,
     warnings: [],
+
+    // ── 膝蓋 baseline y（normalized 座標）──────────────────────────────────
+    // 來源：校準時 FRONT_SNAPSHOT 階段的 bodySnapshot 平均膝蓋位置。
+    // poseLoop 用這個值計算「膝蓋上升量」，再動態補償 PF_HIT / PF_RELEASE。
+    kneeBaseline: {
+      left_y:  round4(session.bodySnapshot?.leftKnee?.y  ?? null),
+      right_y: round4(session.bodySnapshot?.rightKnee?.y ?? null),
+    },
   };
 
   // 計算每個 zone 的參數
@@ -231,6 +248,31 @@ export function getZoneParams(profile, side, direction) {
     SPEED_HIT: zone.SPEED_HIT,
     COOLDOWN_MS: zone.COOLDOWN_MS,
   };
+}
+
+/**
+ * 計算膝蓋上升所需的 PF 補償量。
+ *
+ * 當膝蓋 y 值低於 baseline（= 膝蓋往上提），大腿線旋轉會造成 PF 幾何漂移，
+ * 導致手部打擊誤觸發。此函式回傳一個正偏移量，讓呼叫端動態拉高
+ * PF_HIT 和 PF_RELEASE，使漂移的 PF 值無法穿越門檻。
+ *
+ * @param {CalibrationProfile} profile
+ * @param {"right"|"left"} side
+ * @param {number} currentKneeY - 當前幀膝蓋的 normalized y 座標
+ * @returns {number} 應疊加到 PF_HIT / PF_RELEASE 的補償量（>= 0）
+ */
+export function calcKneeRisingAdj(profile, side, currentKneeY) {
+  if (!profile) return 0;
+
+  const baseline_y = profile.kneeBaseline?.[`${side}_y`];
+  if (baseline_y == null || currentKneeY == null) return 0;
+
+  // 提膝 = y 值變小（畫面座標向上）→ 差值為正
+  const rise = baseline_y - currentKneeY;
+  if (rise <= 0) return 0; // 膝蓋在 baseline 以下或等高，不補償
+
+  return rise * TUNING.K_KNEE;
 }
 
 /**

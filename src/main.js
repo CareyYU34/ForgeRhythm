@@ -206,14 +206,14 @@ const predictWebcam = createPredictWebcam({
         }
 
         // 下載 JSON 檔案
-        const json = JSON.stringify(session, null, 2);
-        const blob = new Blob([json], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${session.sessionId}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
+        // const json = JSON.stringify(session, null, 2);
+        // const blob = new Blob([json], { type: "application/json" });
+        // const url = URL.createObjectURL(blob);
+        // const a = document.createElement("a");
+        // a.href = url;
+        // a.download = `${session.sessionId}.json`;
+        // a.click();
+        // URL.revokeObjectURL(url);
 
         // 還原校準按鈕
         calibrateBtn.classList.remove("is-active");

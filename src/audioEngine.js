@@ -14,6 +14,10 @@ export const SOUND_LIBRARY = [
     label: "Hi-hat",
     url: "./sounds/42_Hi-Hat Closed Soft.wav",
   },
+  {
+  id: "none",
+  label: "靜音",
+  },
 ];
 
 export const ZONES = [
@@ -66,7 +70,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
       await audioCtx.resume().catch(() => {});
     }
 
-    await Promise.all(soundLibrary.map((s) => loadBuffer(s.id, s.url)));
+    await Promise.all(soundLibrary.filter((s) => s.url).map((s) => loadBuffer(s.id, s.url)));
   }
 
   function playZone(side, zoneId, zoneSound) {
