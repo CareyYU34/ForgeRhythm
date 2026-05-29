@@ -235,10 +235,73 @@ function getZoneParamsIfAvailable(profile, side, zone) {
   }
 }
 
+/**
+ * 將 normalized 座標轉為 canvas px
+ */
+function toCanvasPx(pt, rect) {
+  return {
+    x: rect.x + pt.x * rect.width,
+    y: rect.y + pt.y * rect.height,
+  };
+}
+
+/**
+ * 繪製單側的 PF 幾何線段：
+ *   ① 大腿基準線（hip → knee）
+ *   ② PF 線段（hand → F）
+ *   ③ 垂足點 F（小圓點）
+ *
+ * 每幀都執行，不節流（座標需即時跟隨動作）。
+ * 顏色沿用 pickPFColor 的紅/黃/綠，與數字 overlay 一致。
+ */
+function drawPFGeometry({ canvasCtx, hip, knee, hand, F, color, rect }) {
+  if (!hip || !knee || !hand || !F) return;
+
+  const hipPx = toCanvasPx(hip, rect);
+  const kneePx = toCanvasPx(knee, rect);
+  const handPx = toCanvasPx(hand, rect);
+  const fPx = toCanvasPx(F, rect);
+
+  canvasCtx.save();
+
+  // ① 大腿基準線（hip → knee）：半透明白色細線
+  canvasCtx.beginPath();
+  canvasCtx.moveTo(hipPx.x, hipPx.y);
+  canvasCtx.lineTo(kneePx.x, kneePx.y);
+  canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+  canvasCtx.lineWidth = 1.5;
+  canvasCtx.stroke();
+
+  // ② PF 線段（hand → F）：以 PF 狀態顏色繪製
+  canvasCtx.beginPath();
+  canvasCtx.moveTo(handPx.x, handPx.y);
+  canvasCtx.lineTo(fPx.x, fPx.y);
+  canvasCtx.strokeStyle = color;
+  canvasCtx.lineWidth = 2.5;
+  canvasCtx.stroke();
+
+  // ③ 垂足點 F：同色小圓點 + 黑色描邊增加辨識度
+  canvasCtx.beginPath();
+  canvasCtx.arc(fPx.x, fPx.y, 4, 0, Math.PI * 2);
+  canvasCtx.fillStyle = color;
+  canvasCtx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+  canvasCtx.lineWidth = 1;
+  canvasCtx.fill();
+  canvasCtx.stroke();
+
+  canvasCtx.restore();
+}
+
 function drawPFOverlay({
   canvasCtx,
   leftHandPt,
   rightHandPt,
+  leftHip,
+  leftKnee,
+  rightHip,
+  rightKnee,
+  leftF,
+  rightF,
   getVideoDrawRect,
   state,
   nowMs,
@@ -266,6 +329,27 @@ function drawPFOverlay({
     _pfDisplayCache.lastUpdateMs = nowMs;
   }
 
+  // ── PF 幾何線段（每幀繪製，不節流）──
+  drawPFGeometry({
+    canvasCtx,
+    hip: leftHip,
+    knee: leftKnee,
+    hand: leftHandPt,
+    F: leftF,
+    color: _pfDisplayCache.leftColor,
+    rect,
+  });
+  drawPFGeometry({
+    canvasCtx,
+    hip: rightHip,
+    knee: rightKnee,
+    hand: rightHandPt,
+    F: rightF,
+    color: _pfDisplayCache.rightColor,
+    rect,
+  });
+
+  // ── 數字文字（節流後繪製）──
   canvasCtx.save();
   canvasCtx.font = "bold 18px system-ui, sans-serif";
   canvasCtx.textBaseline = "bottom";
@@ -411,15 +495,39 @@ export function createPredictWebcam({
         }
 
         // ── Hip / Knee EMA 平滑（同 PF 的 EMA 邏輯，減少 landmark 抖動對 PF 的影響）──
-        state.emaLeftHip  = emaPoint(state.emaLeftHip,  leftHip,  HIP_KNEE_EMA_ALPHA);
-        state.emaRightHip = emaPoint(state.emaRightHip, rightHip, HIP_KNEE_EMA_ALPHA);
-        state.emaLeftKnee  = emaPoint(state.emaLeftKnee,  leftKnee,  HIP_KNEE_EMA_ALPHA);
-        state.emaRightKnee = emaPoint(state.emaRightKnee, rightKnee, HIP_KNEE_EMA_ALPHA);
+        state.emaLeftHip = emaPoint(
+          state.emaLeftHip,
+          leftHip,
+          HIP_KNEE_EMA_ALPHA,
+        );
+        state.emaRightHip = emaPoint(
+          state.emaRightHip,
+          rightHip,
+          HIP_KNEE_EMA_ALPHA,
+        );
+        state.emaLeftKnee = emaPoint(
+          state.emaLeftKnee,
+          leftKnee,
+          HIP_KNEE_EMA_ALPHA,
+        );
+        state.emaRightKnee = emaPoint(
+          state.emaRightKnee,
+          rightKnee,
+          HIP_KNEE_EMA_ALPHA,
+        );
 
         // 用平滑後的 hip/knee 取代原始值，供 thighLineDistance 計算；
         // handBase 仍使用原始值（手部自己有 PF_SMOOTH_ALPHA 平滑）。
-        const smoothedLeftHand  = [state.emaLeftHip,  leftHandBase,  state.emaLeftKnee];
-        const smoothedRightHand = [state.emaRightHip, rightHandBase, state.emaRightKnee];
+        const smoothedLeftHand = [
+          state.emaLeftHip,
+          leftHandBase,
+          state.emaLeftKnee,
+        ];
+        const smoothedRightHand = [
+          state.emaRightHip,
+          rightHandBase,
+          state.emaRightKnee,
+        ];
 
         if (!state.drawPoseDebugEnabled) {
           drawPose(pickedLeftHand, canvasCtx, getVideoDrawRect);
@@ -443,6 +551,14 @@ export function createPredictWebcam({
             canvasCtx,
             leftHandPt: pickedLeftHand[1],
             rightHandPt: pickedRightHand[1],
+            // EMA 平滑後的 hip / knee，與 thighLineDistance 使用的來源一致
+            leftHip: state.emaLeftHip ?? leftHip,
+            leftKnee: state.emaLeftKnee ?? leftKnee,
+            rightHip: state.emaRightHip ?? rightHip,
+            rightKnee: state.emaRightKnee ?? rightKnee,
+            // F 點來自 thighLineDistance 的新回傳值
+            leftF: state.leftThighCordon?.F ?? null,
+            rightF: state.rightThighCordon?.F ?? null,
             getVideoDrawRect,
             state,
             nowMs: webTimeMs,
@@ -505,8 +621,16 @@ export function createPredictWebcam({
           // 提膝時 emaKnee.y < kneeBaseline.y，calcKneeRisingAdj 回傳正值。
           // 這個補償量會同步疊加到 PF_HIT 和 PF_RELEASE，
           // 讓大腿線旋轉造成的 PF 幾何漂移無法穿越門檻，防止誤觸發。
-          const leftKneeAdj  = calcKneeRisingAdj(profile, "left",  state.emaLeftKnee?.y  ?? leftKnee.y);
-          const rightKneeAdj = calcKneeRisingAdj(profile, "right", state.emaRightKnee?.y ?? rightKnee.y);
+          const leftKneeAdj = calcKneeRisingAdj(
+            profile,
+            "left",
+            state.emaLeftKnee?.y ?? leftKnee.y,
+          );
+          const rightKneeAdj = calcKneeRisingAdj(
+            profile,
+            "right",
+            state.emaRightKnee?.y ?? rightKnee.y,
+          );
 
           // ── 右手：Release reset → 清 history + 解鎖 zone ──
           const rightPF = state.rightThighCordon?.PF;
@@ -560,7 +684,7 @@ export function createPredictWebcam({
             state.rightState = monitoringTriggerConditions(
               state.rightState,
               state.rightThighCordon,
-              rightParams.PF_HIT     + rightKneeAdj, // ← 提膝時門檻跟著升高
+              rightParams.PF_HIT + rightKneeAdj, // ← 提膝時門檻跟著升高
               rightParams.PF_RELEASE + rightKneeAdj, // ← 確保 release 條件一致
               webTimeMs,
               rightParams.COOLDOWN_MS,
@@ -576,7 +700,7 @@ export function createPredictWebcam({
             state.leftState = monitoringTriggerConditions(
               state.leftState,
               state.leftThighCordon,
-              leftParams.PF_HIT     + leftKneeAdj, // ← 提膝時門檻跟著升高
+              leftParams.PF_HIT + leftKneeAdj, // ← 提膝時門檻跟著升高
               leftParams.PF_RELEASE + leftKneeAdj, // ← 確保 release 條件一致
               webTimeMs,
               leftParams.COOLDOWN_MS,

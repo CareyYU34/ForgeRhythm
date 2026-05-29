@@ -44,7 +44,8 @@ export function thighLineDistance(picked) {
   const F = footPointCoordinate(hip, ABX, ABY, t);
   const PF = indexFootLineDistance(ABX, ABY, index, F);
 
-  return { PF };
+  // F 點以 normalized 座標回傳，供 PF 幾何視覺化使用
+  return { PF, F: { x: F.FX, y: F.FY } };
 }
 
 function avg2(a, b) {

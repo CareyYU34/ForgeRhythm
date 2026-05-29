@@ -10,14 +10,14 @@ export async function createPoseLandmarker(runningMode = "IMAGE") {
 
   return PoseLandmarker.createFromOptions(fileset, {
     baseOptions: {
-      modelAssetPath: "./Model/pose_landmarker_full.task",//todo: 比較不同model的延遲
+      modelAssetPath: "./Model/pose_landmarker_full.task", //todo: 比較不同model的延遲
       delegate: "GPU",
     },
     runningMode,
     numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minPosePresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    minPoseDetectionConfidence: 0.35,
+    minPosePresenceConfidence: 0.25,
+    minTrackingConfidence: 0.35,
     outputSegmentationMasks: false,
   });
 }
