@@ -5,9 +5,10 @@
  *
  * 職責：
  *   1. 接收 calibration.getSession() 輸出的 JSON
- *   2. 計算每個 zone (side × direction) 的動態打擊參數
+ *   2. 計算每個 zone 的動態打擊參數（手部觸發區已固定為 front，只剩左右兩個 zone）
  *   3. 輸出標準化的 CalibrationProfile 供 poseLoop / conditions 使用
  *   4. 評估校準品質，產生警告
+ *   5. 提供 DEFAULT_CALIBRATION_PROFILE（冷啟動預設值）
  *
  * 設計原則：
  *   - poseLoop 和 conditions 不需要知道校準細節
@@ -20,22 +21,35 @@ const TUNING = {
   // PF_HIT = restingPF × K1（手接近大腿多近才算打擊）
   K1: 2.0,
 
-  // PF_RELEASE = restingPF × K2（手離開多遠才算釋放，允許下一次打擊）
-  // 注意：實際使用時取所有 zone 中最大的 PF_RELEASE 作為統一門檻
-  K2: 2.0,
+  // ── 釋放門檻（遲滯寬度）─────────────────────────────────────────────────
+  // PF_RELEASE = PF_HIT × RELEASE_RATIO（手離開多遠才算釋放，允許下一次打擊）
+  //
+  // 舊版為 restingPF × K2，且取所有 zone 的最大值作為統一門檻。
+  // 該作法依賴 outer zone 較大的 restingPF 來撐開遲滯區間；outer 移除後，
+  // front 的 hit 與 release 會算出同一個數，遲滯歸零。
+  // 改為相對 PF_HIT 推導後，遲滯比例恆定，自適應調整 PF_HIT 時 release 等比跟隨。
+  //
+  // 3.75 的來源：舊版實際比例為右手 0.7234/0.1938 = 3.73、左手 0.7234/0.1810 = 4.00，
+  // 取中間值以複製原有手感。調大 = 手要抬更高才能打下一下（更難連打，更不易誤觸發）。
+  RELEASE_RATIO: 3.75,
+
+  // PF_RELEASE 的可達性上限：不超過 peakPF 平均值的這個比例。
+  // 防止 PF_HIT 被推到 peak cap 時，release 乘出一個手根本抬不到的高度，
+  // 導致打完一下之後永遠無法 rearm（該側直接靜音）。
+  RELEASE_PEAK_CAP_RATIO: 0.85,
 
   // SPEED_HIT = peakSpeed_mean × K3（速度門檻為校準打擊速度的百分比）
-  K3: 0.30,
+  K3: 0.3,
 
   // COOLDOWN_MS = durationMs_mean × K4（冷卻時間為校準打擊時長的百分比）
-  K4: 0.80,
+  K4: 0.8,
 
   // 冷卻時間的上下限（ms）
   MIN_COOLDOWN_MS: 80,
   MAX_COOLDOWN_MS: 400,
 
   // PF_HIT 不能超過 peakPF 平均值的這個比例（安全上限）
-  PF_HIT_PEAK_CAP_RATIO: 0.60,
+  PF_HIT_PEAK_CAP_RATIO: 0.6,
 
   // PF_HIT 的絕對下限：即使 restingPF × K1 算出來更低，也至少要這個值
   // 太低會導致聲音延遲（手已碰到大腿才觸發）
@@ -45,7 +59,7 @@ const TUNING = {
   RESTING_PF_CV_WARN: 0.35,
 
   // 校準品質判斷：peakHandSpeed 變異係數超過此值則警告
-  PEAK_SPEED_CV_WARN: 0.50,
+  PEAK_SPEED_CV_WARN: 0.5,
 
   // ── 膝蓋補償係數 ──────────────────────────────────────────────────────────
   // 膝蓋每上升 1 個 normalized 單位，PF_HIT / PF_RELEASE 門檻同步增加的量。
@@ -75,6 +89,31 @@ function cv(arr) {
   const m = mean(arr);
   if (m === 0) return 0;
   return stddev(arr) / m;
+}
+
+// ─── 釋放門檻計算（唯一來源）─────────────────────────────────────────────────
+
+/**
+ * 由 PF_HIT 推導 PF_RELEASE。
+ *
+ * 這是 release 的唯一計算來源，calibrationProfile 與 adaptiveMonitor 共用，
+ * 避免公式在兩處各寫一份而漂移。
+ *
+ * @param {number|null} PF_HIT      - 已完成 clamp 的最終 PF_HIT
+ * @param {number|null} peakPFMean  - 該 zone 的 peakPF 平均值（用於可達性上限）
+ * @returns {number|null} PF_RELEASE，PF_HIT 無效時回傳 null
+ */
+export function computeReleaseFromHit(PF_HIT, peakPFMean) {
+  if (PF_HIT == null || !Number.isFinite(PF_HIT)) return null;
+
+  let release = PF_HIT * TUNING.RELEASE_RATIO;
+
+  // 可達性上限：release 不能超出手實際能達到的 PF 範圍
+  if (Number.isFinite(peakPFMean) && peakPFMean > 0) {
+    release = Math.min(release, peakPFMean * TUNING.RELEASE_PEAK_CAP_RATIO);
+  }
+
+  return round4(release);
 }
 
 // ─── 核心：從單一 zone 的 strikes 計算動態參數 ──────────────────────────────
@@ -111,8 +150,9 @@ function computeZoneParams(strikes, zoneKey) {
   // 下限：避免太低導致延遲
   PF_HIT = Math.max(PF_HIT, TUNING.PF_HIT_FLOOR);
 
-  // ── PF_RELEASE：用於統一門檻計算，這裡先算 per-zone 的值 ──
-  const PF_RELEASE = restingMean * TUNING.K2;
+  // ── PF_RELEASE：由「已完成 clamp 的 PF_HIT」推導 ──
+  // 順序不可調換：必須在上下限保護之後計算，否則被 clamp 的那一側遲滯比例會失準。
+  const PF_RELEASE = computeReleaseFromHit(round4(PF_HIT), peakPFMean);
 
   // ── SPEED_HIT ──
   const SPEED_HIT = peakSpeedMean * TUNING.K3;
@@ -140,7 +180,7 @@ function computeZoneParams(strikes, zoneKey) {
 
   return {
     PF_HIT: round4(PF_HIT),
-    PF_RELEASE: round4(PF_RELEASE),
+    PF_RELEASE, // computeReleaseFromHit 內已 round4
     SPEED_HIT: round4(SPEED_HIT),
     COOLDOWN_MS,
     isReliable: warnings.length === 0,
@@ -170,17 +210,15 @@ function round4(v) {
 export function buildCalibrationProfile(session) {
   if (!session || !session.zones) return null;
 
+  // 手部觸發區已收斂為只有 front，outer / inner 不再存在
   const SIDE_ZONE_MAP = {
     right_front: { side: "right", direction: "front" },
     left_front: { side: "left", direction: "front" },
-    right_outer: { side: "right", direction: "outer" },
-    left_outer: { side: "left", direction: "outer" },
   };
 
   const profile = {
-    right: { front: null, outer: null },
-    left: { front: null, outer: null },
-    PF_RELEASE_UNIFIED: 0,
+    right: { front: null },
+    left: { front: null },
     isCalibrated: true,
     calibratedAt: session.timestamp ?? new Date().toISOString(),
     sessionId: session.sessionId ?? null,
@@ -190,14 +228,12 @@ export function buildCalibrationProfile(session) {
     // 來源：校準時 FRONT_SNAPSHOT 階段的 bodySnapshot 平均膝蓋位置。
     // poseLoop 用這個值計算「膝蓋上升量」，再動態補償 PF_HIT / PF_RELEASE。
     kneeBaseline: {
-      left_y:  round4(session.bodySnapshot?.leftKnee?.y  ?? null),
+      left_y: round4(session.bodySnapshot?.leftKnee?.y ?? null),
       right_y: round4(session.bodySnapshot?.rightKnee?.y ?? null),
     },
   };
 
-  // 計算每個 zone 的參數
-  let maxRelease = 0;
-
+  // 計算每個 zone 的參數（PF_RELEASE 改為 per-zone 儲存，不再取跨 zone 最大值）
   for (const [zoneKey, { side, direction }] of Object.entries(SIDE_ZONE_MAP)) {
     const zoneData = session.zones[zoneKey];
     const strikes = zoneData?.strikes ?? [];
@@ -205,25 +241,18 @@ export function buildCalibrationProfile(session) {
 
     profile[side][direction] = {
       PF_HIT: params.PF_HIT,
+      PF_RELEASE: params.PF_RELEASE,
       SPEED_HIT: params.SPEED_HIT,
       COOLDOWN_MS: params.COOLDOWN_MS,
       isReliable: params.isReliable,
       _stats: params._stats,
     };
 
-    // 收集 per-zone 的 PF_RELEASE，取最大值作為統一門檻
-    if (params.PF_RELEASE != null && params.PF_RELEASE > maxRelease) {
-      maxRelease = params.PF_RELEASE;
-    }
-
     // 收集警告
     if (params.warnings) {
       profile.warnings.push(...params.warnings);
     }
   }
-
-  // 統一 PF_RELEASE：取所有 zone 中最大的值
-  profile.PF_RELEASE_UNIFIED = round4(maxRelease);
 
   return profile;
 }
@@ -233,7 +262,7 @@ export function buildCalibrationProfile(session) {
  *
  * @param {CalibrationProfile} profile
  * @param {"right"|"left"} side
- * @param {"front"|"outer"} direction
+ * @param {"front"} direction - 手部觸發區已固定為 front
  * @returns {{ PF_HIT: number, PF_RELEASE: number, SPEED_HIT: number, COOLDOWN_MS: number }}
  */
 export function getZoneParams(profile, side, direction) {
@@ -244,7 +273,7 @@ export function getZoneParams(profile, side, direction) {
 
   return {
     PF_HIT: zone.PF_HIT,
-    PF_RELEASE: profile.PF_RELEASE_UNIFIED,
+    PF_RELEASE: zone.PF_RELEASE,
     SPEED_HIT: zone.SPEED_HIT,
     COOLDOWN_MS: zone.COOLDOWN_MS,
   };
@@ -302,3 +331,62 @@ export function evaluateCalibrationQuality(session) {
  * 匯出 TUNING 常數，供外部 debug / UI 顯示。
  */
 export { TUNING };
+
+// ─── 冷啟動預設 Profile ───────────────────────────────────────────────────────
+//
+// 來源：cal_2026-04-03_17-24-07.json，以 buildCalibrationProfile() 計算所得。
+// 此份校準資料的 front zone resting PF 最低（~0.09），打擊訊號對比最清晰，
+// 適合作為保守的寬鬆初始值，讓自適應機制接手後逐步收斂到使用者個人參數。
+//
+// 注意：此 profile 的 isCalibrated 為 false，代表「預設值」而非「正式校準結果」，
+// poseLoop 不區分兩者，但 main.js 可透過此旗標判斷是否已正式校準。
+//
+// PF_RELEASE 已改為 per-side 儲存（原本是頂層的 PF_RELEASE_UNIFIED），
+// 數值由 computeReleaseFromHit(PF_HIT, peakPFMean) 推導而得。
+
+export const DEFAULT_CALIBRATION_PROFILE = Object.freeze({
+  isCalibrated: false, // 標記為預設值，非正式校準
+  calibratedAt: null,
+  sessionId: "default",
+  warnings: [],
+
+  right: {
+    // PF_RELEASE = min(0.1938 × 3.75, 1.0290 × 0.85) = min(0.7268, 0.8747) = 0.7268
+    front: Object.freeze({
+      PF_HIT: 0.1938,
+      PF_RELEASE: 0.7268,
+      SPEED_HIT: 1.0486,
+      COOLDOWN_MS: 400,
+      isReliable: true,
+      _stats: Object.freeze({
+        restingMean: 0.0969,
+        peakPFMean: 1.029,
+        peakSpeedMean: 3.4955,
+        durationMean: 665,
+      }),
+    }),
+  },
+
+  left: {
+    // PF_RELEASE = min(0.1810 × 3.75, 1.4433 × 0.85) = min(0.6788, 1.2268) = 0.6788
+    front: Object.freeze({
+      PF_HIT: 0.181,
+      PF_RELEASE: 0.6788,
+      SPEED_HIT: 1.0806,
+      COOLDOWN_MS: 400,
+      isReliable: true,
+      _stats: Object.freeze({
+        restingMean: 0.0905,
+        peakPFMean: 1.4433,
+        peakSpeedMean: 3.6022,
+        durationMean: 644,
+      }),
+    }),
+  },
+
+  // 膝蓋 baseline（來自 bodySnapshot，坐姿下的平均膝蓋 y）
+  kneeBaseline: Object.freeze({
+    left_y: 0.6989,
+    right_y: 0.6931,
+  }),
+});

@@ -10,13 +10,14 @@
  *      - 身體基準快照（hip / knee / shoulder 平均）
  *      - 左右正面 baselinePF 同時收斂
  *   3. STRIKING right_front → left_front（各 3 下）
- *   4. OUTER_SNAPSHOT（6 秒）：
- *      「請將雙手自然放在大腿側面上」
- *      - 左右側面 baselinePF 同時收斂
- *   5. STRIKING right_outer → left_outer（各 3 下）
- *   6. DONE
+ *   4. DONE
+ *
+ *   手部觸發區已固定為大腿正面，側面（outer）採集階段已移除。
  *
  *   打擊偵測用兩態狀態機：Resting → Lifted → Landed
+ *
+ *   完整性保證：兩個 zone 都收滿 STRIKES_PER_ZONE 才會進入 DONE。
+ *   中途中止不產出 session，避免 profile 帶著 null 參數進入 runtime。
  *
  * 依賴：
  *   - math.js: thighLineDistance, handBasePointFromPoseLandmarks, isStrictlyNormalizedPoint
@@ -30,19 +31,11 @@ import {
 
 // ─── 常數 ─────────────────────────────────────────────────────────────────────
 
-const CALIBRATION_ZONES = [
-  "right_front",
-  "left_front",
-  "right_outer",
-  "left_outer",
-];
-
-// right_outer が始まる index
-const OUTER_ZONE_START_INDEX = 2;
+const CALIBRATION_ZONES = ["right_front", "left_front"];
 
 const STRIKES_PER_ZONE = 3;
 
-// 靜置快照秒數（正面 & 側面共用）
+// 靜置快照秒數
 const SNAPSHOT_SEC = 6;
 // 身體基準快照所需最少幀數（達到即可提前完成，後續繼續跑 baseline 收斂直到 6 秒）
 const BODY_SNAPSHOT_FRAME_TARGET = 30;
@@ -80,7 +73,6 @@ const LM = {
 const Phase = {
   IDLE: "idle",
   FRONT_SNAPSHOT: "front_snapshot", // 雙手放正面，採集身體快照 + 正面 baseline
-  OUTER_SNAPSHOT: "outer_snapshot", // 雙手放側面，採集側面 baseline
   STRIKING: "striking",
   DONE: "done",
 };
@@ -329,6 +321,20 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
     };
   }
 
+  /**
+   * 所有 zone 是否都已收滿打擊資料。
+   *
+   * runtime 端不對 profile 做防禦性檢查，完整性責任放在這裡：
+   * 只要有任一 zone 沒收滿，computeZoneParams 就會產出 PF_HIT: null，
+   * 導致 getZoneParams 回傳 null、打擊判斷被整段跳過、didHit 卡在前一幀的值。
+   */
+  function isSessionComplete() {
+    if (!session || !session.zones) return false;
+    return CALIBRATION_ZONES.every(
+      (z) => (session.zones[z]?.strikes?.length ?? 0) >= STRIKES_PER_ZONE,
+    );
+  }
+
   // ── 快照通用：對左右兩側同時更新 baseline EMA ──
 
   function updateBothSideBaselines(landmarks) {
@@ -378,31 +384,6 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
         baselineRight.baselinePF.toFixed(4),
       );
       currentZoneIndex = 0; // right_front
-      strikeCount = 0;
-      enterStriking(nowMs);
-    }
-  }
-
-  function handleOuterSnapshot(landmarks, nowMs) {
-    updateBothSideBaselines(landmarks);
-
-    const elapsed = (nowMs - snapshotStartMs) / 1000;
-    const remaining = Math.ceil(SNAPSHOT_SEC - elapsed);
-
-    if (remaining !== lastCountdownSec && remaining > 0) {
-      lastCountdownSec = remaining;
-      emitStatus({ countdown: remaining });
-    }
-
-    if (elapsed >= SNAPSHOT_SEC) {
-      console.log(
-        "[校準] outer snapshot 完成",
-        "left:",
-        baselineLeft.baselinePF.toFixed(4),
-        "right:",
-        baselineRight.baselinePF.toFixed(4),
-      );
-      currentZoneIndex = OUTER_ZONE_START_INDEX; // right_outer
       strikeCount = 0;
       enterStriking(nowMs);
     }
@@ -483,21 +464,17 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
         if (strikeCount >= STRIKES_PER_ZONE) {
           strikeCount = 0;
 
-          // left_front（index 1）完成後 → 進入 OUTER_SNAPSHOT
-          if (currentZoneIndex === 1) {
-            baselineLeft = createSideBaseline();
-            baselineRight = createSideBaseline();
-            snapshotStartMs = nowMs;
-            lastCountdownSec = -1;
-            phase = Phase.OUTER_SNAPSHOT;
-            emitStatus({ countdown: SNAPSHOT_SEC });
-            return;
-          }
-
           const nextIndex = currentZoneIndex + 1;
           if (nextIndex >= CALIBRATION_ZONES.length) {
-            phase = Phase.DONE;
-            emitStatus();
+            // 完整性保證：所有 zone 都收滿才進 DONE。
+            // 未收滿時停留在最後一個 zone 繼續採集，不產出不完整的 session。
+            if (isSessionComplete()) {
+              phase = Phase.DONE;
+              emitStatus();
+            } else {
+              console.warn("[校準] 資料不完整，繼續採集");
+              enterStriking(nowMs);
+            }
           } else {
             currentZoneIndex = nextIndex;
             enterStriking(nowMs);
@@ -543,10 +520,6 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
         handleFrontSnapshot(landmarks, nowMs);
         return;
       }
-      if (phase === Phase.OUTER_SNAPSHOT) {
-        handleOuterSnapshot(landmarks, nowMs);
-        return;
-      }
       if (phase === Phase.STRIKING) {
         handleStriking(landmarks, nowMs);
       }
@@ -564,8 +537,13 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
       return strikeCount;
     },
 
+    /**
+     * 取得校準結果。
+     * 只有走完整個流程（Phase.DONE）才會回傳 session；
+     * 中途中止或尚未完成一律回傳 null，呼叫端不需再自行判斷 phase。
+     */
     getSession() {
-      return session;
+      return phase === Phase.DONE ? session : null;
     },
 
     abort() {

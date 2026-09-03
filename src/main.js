@@ -22,10 +22,22 @@ import {
   createPredictWebcam,
   resetPoseState,
 } from "./poseEngine/poseLoop.js";
-import { initMidiLibraryPicker, initYouTube } from "./mediaPanel.js";
+import {
+  initMidiLibraryPicker,
+  initYouTube,
+  getActiveTransport,
+  setActiveTransport,
+} from "./mediaPanel.js";
 import { createPoseLandmarker } from "./poseEngine/Mediapipe/poseLandmarker.js";
 import { createCalibrationEngine } from "./poseEngine/calibration.js";
 import { buildCalibrationProfile } from "./poseEngine/calibrationProfile.js";
+import { createAdaptiveMonitor } from "./poseEngine/adaptiveMonitor.js";
+
+// ── 歌曲模式 ──
+import { SONG_LIBRARY } from "./songMode/manifest.js";
+import { createSongUI } from "./songMode/songUI.js";
+import { createSongSession } from "./songMode/songSession.js";
+import { createHitRouter } from "./songMode/hitRouter.js";
 
 const video = document.getElementById("webcam");
 const canvas = document.getElementById("output");
@@ -154,8 +166,13 @@ const state = {
 };
 
 const zoneSound = createDefaultZoneSound();
-const { initAudio, playZone, setOutputVolume } =
-  createAudioEngine(SOUND_LIBRARY);
+
+// ⚠ 必須保留整個 audioEngine 物件 ——
+//   歌曲模式需要 playMidi / scheduleClick / cancelScheduled / now / isReady。
+//   原本的解構寫法會讓這些方法拿不到。
+const audioEngine = createAudioEngine(SOUND_LIBRARY);
+const { initAudio, playZone, setOutputVolume } = audioEngine;
+
 const { replaceHits } = initHitDisplay(hitDisplayEl, 1);
 setOutputVolume(state.outputGain);
 
@@ -166,6 +183,33 @@ const getPoseLandmarker = () => state.poseLandmarker;
 // ── 校準引擎 ──
 const calibration = createCalibrationEngine({ onStatusChange: onCalibStatus });
 
+// ── 自適應監控引擎 ──
+const monitor = createAdaptiveMonitor({ state });
+
+// ── 歌曲模式 ────────────────────────────────────────────────────────────────
+//
+// ⚠ 建立順序：songUI → session → router，且必須在 createPredictWebcam 之前，
+//   因為 router.route 要當作 playZone 參數注入。
+
+const songUI = createSongUI();
+
+const songSession = createSongSession({
+  state,
+  audio: audioEngine,
+  getTransport: getActiveTransport,
+  setTransport: setActiveTransport,
+  songUI,
+  onNotice: (msg) => console.warn("[songMode]", msg),
+});
+
+const hitRouter = createHitRouter({
+  session: songSession,
+  audio: audioEngine,
+  freePlayZone: playZone, // 自由模式仍走原本的 zoneSound 查表
+  songUI,
+  getTransport: getActiveTransport,
+});
+
 const predictWebcam = createPredictWebcam({
   video,
   canvas,
@@ -173,7 +217,9 @@ const predictWebcam = createPredictWebcam({
   state,
   getVideoDrawRect: getRect,
   getPoseLandmarker,
-  playZone,
+  // ⚠ 這是整個整合的唯一接點。
+  //   簽章與 playZone 完全一致，因此 poseEngine/ 一行都不用改。
+  playZone: hitRouter.route,
   zoneSound,
   onHit: (hits) => {
     replaceHits(
@@ -185,11 +231,14 @@ const predictWebcam = createPredictWebcam({
       })),
     );
   },
-  // 每幀 pose callback 裡會呼叫這個，把 landmarks 餵給校準引擎
+  // 每幀 pose callback 裡會呼叫這個，把 landmarks 餵給校準引擎與監控引擎
   onFrame: (poseLandmarks, nowMs) => {
     calibration.feedFrame(poseLandmarks, nowMs);
 
-    // 校準完成時：下載 JSON + 還原按鈕
+    // ── 監控引擎每幀更新 ──
+    monitor.feedFrame(poseLandmarks, nowMs);
+
+    // 校準完成時：建立正式 profile 並重置監控狀態
     if (calibration.getPhase() === calibration.PHASES.DONE) {
       const session = calibration.getSession();
       if (session && !state._calibrationLogged) {
@@ -205,15 +254,8 @@ const predictWebcam = createPredictWebcam({
           console.warn("[main] 校準品質警告：", profile.warnings);
         }
 
-        // 下載 JSON 檔案
-        // const json = JSON.stringify(session, null, 2);
-        // const blob = new Blob([json], { type: "application/json" });
-        // const url = URL.createObjectURL(blob);
-        // const a = document.createElement("a");
-        // a.href = url;
-        // a.download = `${session.sessionId}.json`;
-        // a.click();
-        // URL.revokeObjectURL(url);
+        // ── 通知監控引擎重置（以正式 profile 重新初始化低谷追蹤器）──
+        monitor.reset();
 
         // 還原校準按鈕
         calibrateBtn.classList.remove("is-active");
@@ -232,17 +274,53 @@ const startCam = () =>
     initAudio,
   });
 
-const stopCam = () =>
+const stopCam = () => {
+  // ⚠ 關鏡頭 = 沒有觸發源，歌曲模式必須一併退出，
+  //   否則會留下「影片在播但打什麼都沒反應」的狀態。
+  songSession.exit("camera-off");
+  monitor.stop();
   stopWebcam({
     video,
     canvasCtx,
     state,
     resetPoseState: () => resetPoseState(state),
   });
+};
+
+// ─── HUD 迴圈 ───────────────────────────────────────────────────────────────
+//
+// ⚠ 刻意獨立於 poseLoop 的 rAF 迴圈。
+//   那條迴圈綁在鏡頭上、職責是姿態偵測，不應該塞入 HUD 更新。
+//
+// 本迴圈只做一件事：依影片時間切換「引導拍 ↔ 預覽帶」。
+// 發聲路徑完全在事件驅動的 hitRouter.route 裡，不經過這裡。
+
+function hudLoop() {
+  requestAnimationFrame(hudLoop);
+  if (!songSession.isPlaying()) return;
+
+  const transport = getActiveTransport();
+  if (!transport) return;
+
+  const tMs = transport.getCurrentTime() * 1000;
+
+  if (tMs < songSession.getFirstOnsetMs()) {
+    songUI.showCuePhase();
+    songUI.updateCueLamps(tMs);
+  } else {
+    songUI.showRibbonPhase();
+  }
+}
 
 async function bootstrap() {
-  initYouTube();
+  // ⚠ beforeLoad：按下 YT「載入」時先退出歌曲模式。
+  //   兩者共用 player-card，不退出會讓 transport 被覆寫而留下孤兒排程。
+  initYouTube({ beforeLoad: () => songSession.exit("switch") });
   initMidiLibraryPicker();
+
+  // ── 歌曲清單 ──
+  songUI.renderLibrary(SONG_LIBRARY, (song) => songSession.enter(song));
+  songUI.bindExit(() => songSession.exit("manual"));
 
   state.poseLandmarker = await createPoseLandmarker(state.runningMode);
 
@@ -285,7 +363,14 @@ async function bootstrap() {
   });
 
   button.textContent = "關閉鏡頭";
+
+  // ── 啟動監控引擎 ──
+  monitor.start();
+
   await startCam();
+
+  // ── HUD 迴圈 ──
+  requestAnimationFrame(hudLoop);
 
   // 校準按鈕（topbar）
   calibrateBtn.addEventListener("click", () => {

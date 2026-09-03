@@ -1,11 +1,7 @@
 const HIT_LABELS = {
-  left_front: "左腳正面",
-  left_outer: "左腳外側",
-  left_inner: "左腳內側",
+  left_front: "左腿正面",
   left_heel: "左腳跟",
-  right_front: "右腳正面",
-  right_outer: "右腳外側",
-  right_inner: "右腳內側",
+  right_front: "右腿正面",
   right_heel: "右腳跟",
 };
 
@@ -295,7 +291,7 @@ export function initSettingsPanel({
         onChange: onDrawPoseDebugChange,
       }),
     );
-    
+
     debugControlsEl.appendChild(
       createToggleControl({
         label: "PF 值顯示",

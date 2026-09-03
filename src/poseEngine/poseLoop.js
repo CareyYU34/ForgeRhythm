@@ -5,9 +5,7 @@ import {
 import {
   handBasePointFromPoseLandmarks,
   isStrictlyNormalizedPoint,
-  pickHandZoneByWindow,
   pushPointHistory,
-  summarizeHandMotion,
   summarizeKneeMotion,
   thighLineDistance,
 } from "./math.js";
@@ -66,11 +64,11 @@ function emaPoint(prev, curr, alpha) {
   };
 }
 
-const HAND_HISTORY_SIZE = 5;
 const KNEE_HISTORY_SIZE = 5;
-const HAND_FRONT_DOMINANT_RATIO = 1.2;
-const HAND_SIDE_DOMINANT_RATIO = 1.2;
-const HAND_MIN_ZONE_CONSISTENCY = 0.55;
+
+// 手部觸發區已固定為大腿正面，不再依進入方向分辨 front / outer / inner。
+// 保留 zone 這一層抽象是因為膝蓋仍使用 "heel"，音色表的 key 格式維持 `${side}_${zoneId}`。
+const HAND_ZONE = "front";
 
 // 硬編碼靜態預設值（未校準時使用）
 const KNEE_THRESHOLDS_DEFAULT = {
@@ -112,8 +110,6 @@ function clearTrackingHistory(state) {
   state.prevRightHand = null;
   state.prevLeftKnee = null;
   state.prevRightKnee = null;
-  state.leftHandHistory = [];
-  state.rightHandHistory = [];
   state.leftKneeHistory = [];
   state.rightKneeHistory = [];
   state.preSec = 0;
@@ -131,10 +127,6 @@ export function createInitialPoseState() {
     preSec: 0, // 上一幀的時間戳（秒）
     prevLeftHand: null, // 上一幀的左手關鍵點（用於速度計算）
     prevRightHand: null, // 上一幀的右手關鍵點（用於速度計算）
-    leftHandHistory: [], // 最近幾幀的左手關鍵點歷史（用於 zone 鎖定）
-    rightHandHistory: [], // 最近幾幀的右手關鍵點歷史（用於 zone 鎖定）
-    lastLeftHandZone: "front", // 上次穩定的左手 zone（用於 zone 鎖定失敗時的 fallback）
-    lastRightHandZone: "front", // 上次穩定的右手 zone（用於 zone 鎖定失敗時的 fallback）
     leftThighCordon: null, // 左大腿PF數據（用於 hit 判斷）
     rightThighCordon: null, // 右大腿PF數據（用於 hit 判斷）
     rightState: { canHit: false, lastHitMs: -Infinity },
@@ -156,12 +148,6 @@ export function createInitialPoseState() {
     },
     drawPoseDebugEnabled: false,
     showPFOverlay: false,
-
-    // ── 方向鎖定（zone locking）──
-    rightLockedZone: null,
-    rightZoneLocked: false,
-    leftLockedZone: null,
-    leftZoneLocked: false,
 
     // ── 校準 profile（null = 未校準，不發聲）──
     calibrationProfile: null,
@@ -318,13 +304,13 @@ function drawPFOverlay({
       leftPF,
       state.calibrationProfile,
       "left",
-      state.leftLockedZone ?? state.lastLeftHandZone,
+      HAND_ZONE,
     );
     _pfDisplayCache.rightColor = pickPFColor(
       rightPF,
       state.calibrationProfile,
       "right",
-      state.rightLockedZone ?? state.lastRightHandZone,
+      HAND_ZONE,
     );
     _pfDisplayCache.lastUpdateMs = nowMs;
   }
@@ -583,19 +569,7 @@ export function createPredictWebcam({
         // Hand hit conditions
         // ── 動態參數：從 calibrationProfile 取得 per-zone 門檻 ──
         // 未校準時 calibrationProfile 為 null，跳過整段手部打擊偵測。
-        // 先把最新手部點放進 history（每次打擊循環開始時 history 已被清空）。
-        state.leftHandHistory = pushPointHistory(
-          state.leftHandHistory,
-          pickedLeftHand[1],
-          videoTimeSec,
-          HAND_HISTORY_SIZE,
-        );
-        state.rightHandHistory = pushPointHistory(
-          state.rightHandHistory,
-          pickedRightHand[1],
-          videoTimeSec,
-          HAND_HISTORY_SIZE,
-        );
+        // 手部不再需要 history：zone 已固定為 front，速度用前後兩點即可算出。
 
         // 膝蓋改用短視窗特徵做判斷，不再只看前後兩點，先把最新膝蓋點放進 history，再把這段短視窗摘要成可判斷的特徵。
         // 原本在 if (state.calibrationProfile) 內，導致 calibration 完成後初期 history 為空，無法正確判斷膝蓋動作。現在改成只要有足夠的膝蓋點就嘗試判斷，提升穩定度。
@@ -615,7 +589,6 @@ export function createPredictWebcam({
 
         if (state.calibrationProfile) {
           const profile = state.calibrationProfile;
-          const PF_RELEASE_UNIFIED = profile.PF_RELEASE_UNIFIED;
 
           // ── 膝蓋上升補償量（每幀計算，用平滑後的 knee y）──
           // 提膝時 emaKnee.y < kneeBaseline.y，calcKneeRisingAdj 回傳正值。
@@ -632,54 +605,12 @@ export function createPredictWebcam({
             state.emaRightKnee?.y ?? rightKnee.y,
           );
 
-          // ── 右手：Release reset → 清 history + 解鎖 zone ──
-          const rightPF = state.rightThighCordon?.PF;
-          // 右手 release 判斷也要加上補償量，確保 release 條件與 hit 條件一致
-          if (rightPF != null && rightPF > PF_RELEASE_UNIFIED + rightKneeAdj) {
-            if (!state.rightState.canHit) {
-              // 剛從打擊狀態回到釋放狀態，清空 history 開始新循環
-              state.rightHandHistory = [];
-              state.rightZoneLocked = false;
-              state.rightLockedZone = null;
-            } // ── 右手：方向鎖定檢查點（PF 穿越 release 的那一幀）──
-          } else if (rightPF != null && !state.rightZoneLocked) {
-            const metrics = summarizeHandMotion(state.rightHandHistory);
-            const lockedZone = metrics
-              ? pickHandZoneByWindow(metrics, "right", {
-                  frontDominantRatio: HAND_FRONT_DOMINANT_RATIO,
-                  sideDominantRatio: HAND_SIDE_DOMINANT_RATIO,
-                  minConsistency: HAND_MIN_ZONE_CONSISTENCY,
-                })
-              : null;
-            state.rightLockedZone = lockedZone ?? state.lastRightHandZone;
-            state.rightZoneLocked = true;
-          }
-
-          // ── 左手：Release reset → 清 history + 解鎖 zone ──
-          const leftPF = state.leftThighCordon?.PF;
-          // 左手 release 判斷同樣加上補償量
-          if (leftPF != null && leftPF > PF_RELEASE_UNIFIED + leftKneeAdj) {
-            if (!state.leftState.canHit) {
-              state.leftHandHistory = [];
-              state.leftZoneLocked = false;
-              state.leftLockedZone = null;
-            } // ── 左手：方向鎖定檢查點 ──
-          } else if (leftPF != null && !state.leftZoneLocked) {
-            const metrics = summarizeHandMotion(state.leftHandHistory);
-            const lockedZone = metrics
-              ? pickHandZoneByWindow(metrics, "left", {
-                  frontDominantRatio: HAND_FRONT_DOMINANT_RATIO,
-                  sideDominantRatio: HAND_SIDE_DOMINANT_RATIO,
-                  minConsistency: HAND_MIN_ZONE_CONSISTENCY,
-                })
-              : null;
-            state.leftLockedZone = lockedZone ?? state.lastLeftHandZone;
-            state.leftZoneLocked = true;
-          }
+          // 註：釋放判斷（PF > PF_RELEASE → 重新武裝）已完全內建在
+          // monitoringTriggerConditions 中，這裡不再需要外層的 release 分支。
+          // 原本那段的職責是「清空手部 history + 解鎖方向」，兩者都已不存在。
 
           // ── 右手：動態門檻 hit 判斷（疊加膝蓋補償）──
-          const rightZone = state.rightLockedZone ?? state.lastRightHandZone;
-          const rightParams = getZoneParams(profile, "right", rightZone);
+          const rightParams = getZoneParams(profile, "right", HAND_ZONE);
           if (rightParams) {
             state.rightState = monitoringTriggerConditions(
               state.rightState,
@@ -694,8 +625,7 @@ export function createPredictWebcam({
           }
 
           // ── 左手：動態門檻 hit 判斷（疊加膝蓋補償）──
-          const leftZone = state.leftLockedZone ?? state.lastLeftHandZone;
-          const leftParams = getZoneParams(profile, "left", leftZone);
+          const leftParams = getZoneParams(profile, "left", HAND_ZONE);
           if (leftParams) {
             state.leftState = monitoringTriggerConditions(
               state.leftState,
@@ -735,15 +665,14 @@ export function createPredictWebcam({
         }
 
         // 未校準時：不執行手部 / 膝蓋打擊偵測，不發聲
-        // 手部命中：使用鎖定的 zone 播放音效，觸發後解鎖。
+        // 手部命中：觸發區固定為大腿正面。
         if (state.leftState.didHit) {
-          const zone = state.leftLockedZone ?? state.lastLeftHandZone;
-          playZone("left", zone, zoneSound);
-          frameHits.push({ side: "left", zoneId: zone, source: "hand" });
-          if (zoneSound[`left_${zone}`] !== "none") {
+          playZone("left", HAND_ZONE, zoneSound);
+          frameHits.push({ side: "left", zoneId: HAND_ZONE, source: "hand" });
+          if (zoneSound[`left_${HAND_ZONE}`] !== "none") {
             _fx.pushHandHit({
               side: "left",
-              zone,
+              zone: HAND_ZONE,
               hip: pickedLeftHand[0],
               hand: pickedLeftHand[1],
               knee: pickedLeftHand[2],
@@ -751,19 +680,15 @@ export function createPredictWebcam({
               getVideoDrawRect,
             });
           }
-          state.lastLeftHandZone = zone;
-          state.leftZoneLocked = false;
-          state.leftLockedZone = null;
         }
 
         if (state.rightState.didHit) {
-          const zone = state.rightLockedZone ?? state.lastRightHandZone;
-          playZone("right", zone, zoneSound);
-          frameHits.push({ side: "right", zoneId: zone, source: "hand" });
-          if (zoneSound[`right_${zone}`] !== "none") {
+          playZone("right", HAND_ZONE, zoneSound);
+          frameHits.push({ side: "right", zoneId: HAND_ZONE, source: "hand" });
+          if (zoneSound[`right_${HAND_ZONE}`] !== "none") {
             _fx.pushHandHit({
               side: "right",
-              zone,
+              zone: HAND_ZONE,
               hip: pickedRightHand[0],
               hand: pickedRightHand[1],
               knee: pickedRightHand[2],
@@ -771,9 +696,6 @@ export function createPredictWebcam({
               getVideoDrawRect,
             });
           }
-          state.lastRightHandZone = zone;
-          state.rightZoneLocked = false;
-          state.rightLockedZone = null;
         }
 
         if (state.leftKneeState.didHit) {

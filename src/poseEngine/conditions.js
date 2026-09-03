@@ -1,5 +1,3 @@
-
-
 export function monitoringTriggerConditions(
   State,
   ThighCordon,
@@ -8,7 +6,7 @@ export function monitoringTriggerConditions(
   nowMs,
   COOLDOWN_MS,
   handSpeed,
-  SPEED_HIT
+  SPEED_HIT,
 ) {
   const PF = ThighCordon?.PF;
   if (PF == null) return { ...(State ?? {}), didHit: false };
@@ -17,12 +15,17 @@ export function monitoringTriggerConditions(
   if (State.lastHitMs == null) State.lastHitMs = -Infinity;
   if (State.canHit == null) State.canHit = true;
 
-  if (nowMs - State.lastHitMs < COOLDOWN_MS) {
-    return { ...State, didHit: false };
-  }
-
+  // ── 重新武裝：必須在冷卻早退「之前」判斷 ──
+  // 原本這段寫在冷卻檢查之後，導致打擊後手往上回擺時，
+  // 若 PF 穿越 PF_RELEASE 的那一刻仍在冷卻期內，這次穿越會被整個吞掉；
+  // 等冷卻結束時手已在下擺、PF 早已低於 release，canHit 便再無機會回到 true，
+  // 下一下直接漏掉。改為先記錄釋放狀態，冷卻只負責節流、不再影響武裝。
   if (PF > PF_RELEASE) {
     State.canHit = true;
+  }
+
+  if (nowMs - State.lastHitMs < COOLDOWN_MS) {
+    return { ...State, didHit: false };
   }
 
   const ok = State.canHit && PF <= PF_HIT && (handSpeed ?? 0) >= SPEED_HIT;
@@ -40,7 +43,7 @@ export function monitoringKneeKickConditions(
   state,
   metrics,
   nowMs,
-  thresholds
+  thresholds,
 ) {
   if (!metrics) {
     return { ...(state ?? {}), didHit: false };

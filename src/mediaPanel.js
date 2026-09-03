@@ -1,3 +1,25 @@
+/**
+ * mediaPanel.js
+ *
+ * ═══ 本次重構（規格書 §5）═══
+ *
+ * ⚠ 原本 controls-bar 的所有事件監聽器都綁在 onPlayerReady() 內。
+ *   player 只建立一次時沒問題，但歌曲模式要 destroy 並重建 YT player，
+ *   onPlayerReady 會再跑一次 → playPauseBtn 被重複 addEventListener
+ *   → 按一下觸發兩次 toggle，看起來像沒反應。
+ *
+ * 改為：
+ *   1. bindTransportControls() 在 initYouTube() 時呼叫「一次」
+ *   2. 所有 handler 對 activeTransport 操作
+ *   3. 切換播放器就是換 adapter 實例，DOM 與監聽器都不動
+ *
+ * 同時，歌曲模式需要的 getCurrentTime() 從此有統一來源。
+ *
+ * initMidiLibraryPicker 完全未改動。
+ */
+
+import { createYtAdapter } from "./transport/ytAdapter.js";
+
 const MIDI_LIBRARY_API = "https://imuse.ncnu.edu.tw/Midi-library/api";
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -239,122 +261,135 @@ export function initMidiLibraryPicker() {
   });
 }
 
-let player;
-let duration = 0;
-let lastVolume = 100;
+// ─── Transport 管理 ─────────────────────────────────────────────────────────
 
-let seekBar;
-let volumeSlier;
+/**
+ * 當前作用中的播放器 adapter。
+ *
+ * ⚠ 這是 controls-bar 與歌曲模式共同的唯一時間來源。
+ *   任何需要 currentTime 的程式碼都應該走 getActiveTransport()，
+ *   不要直接摸 YT.Player 或 <video> 元素。
+ */
+let activeTransport = null;
+
+let lastVolume = 100;
 let progressTimer = null;
+let controlsBound = false;
 let isYouTubeApiReady = false;
 
-function createPlayer(videoId) {
-  player = new YT.Player("player", {
-    videoId,
-    playerVars: {
-      controls: 0,
-      modestbranding: 0,
-      rel: 0,
-      showinfo: 0,
-    },
-    events: {
-      onReady: onPlayerReady,
-      onStateChange: onPlayerStateChange,
-    },
-  });
+export function getActiveTransport() {
+  return activeTransport;
 }
 
-function onPlayerReady() {
-  duration = player.getDuration();
-  document.getElementById("duration").textContent = formatTime(duration);
+export function setActiveTransport(transport) {
+  activeTransport = transport;
 
-  seekBar = document.getElementById("seekBar");
-  volumeSlier = document.getElementById("volumeSlider");
+  const speedEl = document.getElementById("playbackSpeed");
+  const seekBar = document.getElementById("seekBar");
+  const volumeSlider = document.getElementById("volumeSlider");
 
-  volumeSlier.value = player.getVolume();
+  // 變速：本機影片第一版鎖 1.0x
+  if (speedEl) {
+    speedEl.disabled = !transport?.supportsRate;
+    if (transport && !transport.supportsRate) speedEl.value = "1";
+  }
 
-  updateSilderFill(seekBar);
-  updateSilderFill(volumeSlier);
+  if (!transport) {
+    if (seekBar) {
+      seekBar.value = 0;
+      updateSilderFill(seekBar);
+    }
+    setText("currentTime", "0:00");
+    setText("duration", "0:00");
+    syncPlayIcon(false);
+    return;
+  }
 
-  document
-    .getElementById("playPauseBtn")
-    .addEventListener("click", togglePlayPause);
-  document
-    .getElementById("overlayPlay")
-    .addEventListener("click", togglePlayPause);
-  document.getElementById("muteBtn").addEventListener("click", toggleMute);
+  // 把目前 UI 上的音量推給新的 transport（跨播放器保留使用者設定）
+  if (volumeSlider) transport.setVolume(Number(volumeSlider.value));
 
-  volumeSlier.addEventListener("input", handleVolume);
-  seekBar.addEventListener("input", handleSeek);
+  transport.on("ready", () => {
+    setText("duration", formatTime(transport.getDuration()));
+  });
+  transport.on("playing", () => syncPlayIcon(true));
+  transport.on("pause", () => syncPlayIcon(false));
+  transport.on("ended", () => syncPlayIcon(false));
+}
 
-  document
-    .getElementById("playbackSpeed")
-    .addEventListener("change", handlePlaybackSpeed);
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
 
-  document
-    .getElementById("fullscreenBtn")
-    .addEventListener("click", toggleFullscreen);
-
-  if (progressTimer) clearInterval(progressTimer);
-  progressTimer = setInterval(updateProgress, 250);
+function syncPlayIcon(playing) {
+  const btn = document.getElementById("playPauseBtn");
+  const overlay = document.getElementById("overlayPlay");
+  if (btn) {
+    btn.innerHTML = playing
+      ? '<i class="fas fa-pause"></i>'
+      : '<i class="fas fa-play"></i>';
+  }
+  // 歌曲模式下 songUI 會把 overlay 設成 display:none，
+  // 這裡不覆寫它的 none，只在自由模式切換 flex。
+  if (overlay && overlay.style.display !== "none") {
+    overlay.style.display = playing ? "none" : "flex";
+  }
 }
 
 function togglePlayPause() {
-  const state = player.getPlayerState();
-  const overlay = document.getElementById("overlayPlay");
-  const btn = document.getElementById("playPauseBtn");
-
-  if (state === YT.PlayerState.PLAYING) {
-    player.pauseVideo();
-    overlay.style.display = "flex";
-    btn.innerHTML = '<i class="fas fa-play"></i>';
-  } else {
-    player.playVideo();
-    overlay.style.display = "none";
-    btn.innerHTML = '<i class="fas fa-pause"></i>';
-  }
+  if (!activeTransport) return;
+  if (activeTransport.isPlaying()) activeTransport.pause();
+  else activeTransport.play();
 }
 
 function toggleMute() {
+  if (!activeTransport) return;
   const btn = document.getElementById("muteBtn");
-  if (player.isMuted()) {
-    player.unMute();
-    btn.innerHTML = '<i class="fas fa-volume-high"></i>';
-    volumeSlier.value = lastVolume;
-    player.setVolume(lastVolume);
+  const volumeSlider = document.getElementById("volumeSlider");
+
+  if (activeTransport.isMuted()) {
+    activeTransport.unMute();
+    if (btn) btn.innerHTML = '<i class="fas fa-volume-high"></i>';
+    if (volumeSlider) volumeSlider.value = lastVolume;
+    activeTransport.setVolume(lastVolume);
   } else {
-    lastVolume = player.getVolume();
-    player.mute();
-    btn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
-    volumeSlier.value = 0;
+    lastVolume = activeTransport.getVolume();
+    activeTransport.mute();
+    if (btn) btn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
+    if (volumeSlider) volumeSlider.value = 0;
   }
-  updateSilderFill(volumeSlier);
+  if (volumeSlider) updateSilderFill(volumeSlider);
 }
 
 function handleVolume(e) {
   const newVolume = parseInt(e.target.value, 10);
-  if (newVolume === 0) {
-    player.mute();
-    document.getElementById("muteBtn").innerHTML =
-      '<i class="fas fa-volume-xmark"></i>';
-  } else {
-    player.unMute();
-    player.setVolume(newVolume);
-    document.getElementById("muteBtn").innerHTML =
-      '<i class="fas fa-volume-high"></i>';
+  const btn = document.getElementById("muteBtn");
+
+  if (activeTransport) {
+    if (newVolume === 0) {
+      activeTransport.mute();
+      if (btn) btn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
+    } else {
+      activeTransport.unMute();
+      activeTransport.setVolume(newVolume);
+      if (btn) btn.innerHTML = '<i class="fas fa-volume-high"></i>';
+    }
   }
+
   lastVolume = newVolume;
-  updateSilderFill(volumeSlier);
+  updateSilderFill(e.target);
 }
 
 function handleSeek(e) {
+  if (!activeTransport) return;
+  const duration = activeTransport.getDuration();
   if (!duration) return;
-  player.seekTo((e.target.value / 100) * duration, true);
-  updateSilderFill(seekBar);
+  activeTransport.seekTo((e.target.value / 100) * duration);
+  updateSilderFill(e.target);
 }
 
 function handlePlaybackSpeed(e) {
-  player.setPlaybackRate(parseFloat(e.target.value));
+  activeTransport?.setPlaybackRate(parseFloat(e.target.value));
 }
 
 function toggleFullscreen() {
@@ -373,11 +408,20 @@ function toggleFullscreen() {
 }
 
 function updateProgress() {
-  if (!player || !duration) return;
-  const current = player.getCurrentTime();
-  document.getElementById("currentTime").textContent = formatTime(current);
-  seekBar.value = (current / duration) * 100;
-  updateSilderFill(seekBar);
+  if (!activeTransport) return;
+  const duration = activeTransport.getDuration();
+  if (!duration) return;
+
+  const current = activeTransport.getCurrentTime();
+  const seekBar = document.getElementById("seekBar");
+
+  setText("currentTime", formatTime(current));
+  setText("duration", formatTime(duration));
+
+  if (seekBar && !seekBar.dataset.dragging) {
+    seekBar.value = (current / duration) * 100;
+    updateSilderFill(seekBar);
+  }
 }
 
 function updateSilderFill(slider) {
@@ -386,26 +430,64 @@ function updateSilderFill(slider) {
   slider.style.background = `linear-gradient(to right, #f90000 ${percentage}%, rgba(255, 255, 255, 0.1) ${percentage}%)`;
 }
 
-function onPlayerStateChange(event) {
-  const playPauseBtn = document.getElementById("playPauseBtn");
-  const overlayPlay = document.getElementById("overlayPlay");
-
-  if (event.data === YT.PlayerState.PLAYING) {
-    playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-    overlayPlay.style.display = "none";
-  } else if (event.data === YT.PlayerState.PAUSED) {
-    playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
-    overlayPlay.style.display = "flex";
-  }
-}
-
 function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60)
     .toString()
     .padStart(2, "0");
   return `${mins}:${secs}`;
 }
+
+/**
+ * controls-bar 的事件綁定。
+ *
+ * ⚠ 全程只呼叫一次。這是本次重構的重點 ——
+ *   原本綁在 onPlayerReady 內，重建 player 就會重複綁定。
+ */
+function bindTransportControls() {
+  if (controlsBound) return;
+  controlsBound = true;
+
+  document
+    .getElementById("playPauseBtn")
+    ?.addEventListener("click", togglePlayPause);
+  document
+    .getElementById("overlayPlay")
+    ?.addEventListener("click", togglePlayPause);
+  document.getElementById("muteBtn")?.addEventListener("click", toggleMute);
+
+  const volumeSlider = document.getElementById("volumeSlider");
+  if (volumeSlider) {
+    volumeSlider.addEventListener("input", handleVolume);
+    updateSilderFill(volumeSlider);
+  }
+
+  const seekBar = document.getElementById("seekBar");
+  if (seekBar) {
+    seekBar.addEventListener("input", handleSeek);
+    // 拖曳期間不要被 updateProgress 覆寫
+    seekBar.addEventListener("pointerdown", () => {
+      seekBar.dataset.dragging = "1";
+    });
+    const endDrag = () => delete seekBar.dataset.dragging;
+    seekBar.addEventListener("pointerup", endDrag);
+    seekBar.addEventListener("change", endDrag);
+    updateSilderFill(seekBar);
+  }
+
+  document
+    .getElementById("playbackSpeed")
+    ?.addEventListener("change", handlePlaybackSpeed);
+  document
+    .getElementById("fullscreenBtn")
+    ?.addEventListener("click", toggleFullscreen);
+
+  if (progressTimer) clearInterval(progressTimer);
+  progressTimer = setInterval(updateProgress, 250);
+}
+
+// ─── YouTube ────────────────────────────────────────────────────────────────
 
 function extractYouTubeId(url) {
   if (!url) return null;
@@ -439,10 +521,11 @@ function extractYouTubeId(url) {
   return null;
 }
 
-function bindInputControls() {
+function bindInputControls({ beforeLoad } = {}) {
   const ytPanel = document.getElementById("ytPanel");
   const ytUrl = document.getElementById("ytUrl");
   const ytLoadBtn = document.getElementById("ytLoadBtn");
+  const playerHost = document.getElementById("playerHost");
 
   ytPanel.classList.add("is-hidden");
 
@@ -460,12 +543,18 @@ function bindInputControls() {
       return;
     }
 
-    ytPanel.classList.remove("is-hidden");
+    // 歌曲模式優先度較低：載入 YT 時先退出歌曲模式
+    beforeLoad?.();
 
-    if (!player) {
-      createPlayer(id);
+    ytPanel.classList.remove("is-hidden");
+    playerHost.classList.remove("is-hidden");
+
+    const existing = getActiveTransport();
+    if (existing && existing.kind === "youtube") {
+      existing.loadVideoById(id);
     } else {
-      player.loadVideoById(id);
+      existing?.destroy();
+      setActiveTransport(createYtAdapter({ hostEl: playerHost, videoId: id }));
     }
   });
 
@@ -493,8 +582,14 @@ function loadYouTubeIframeApi() {
   document.head.appendChild(script);
 }
 
-export function initYouTube() {
-  bindInputControls();
+/**
+ * @param {Object}   [opts]
+ * @param {Function} [opts.beforeLoad] 按下 YT「載入」前呼叫，用來退出歌曲模式
+ */
+export function initYouTube(opts = {}) {
+  bindInputControls(opts);
+  bindTransportControls();
+
   window.onYouTubeIframeAPIReady = () => {
     isYouTubeApiReady = true;
   };

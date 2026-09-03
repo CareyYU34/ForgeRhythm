@@ -53,8 +53,9 @@ body {
 }
 
 .hit-display {
+  order: 5;
   flex: 1 1 auto;
-  min-width: 240px;
+  min-width: 0;
   max-width: min(680px, calc(50vw - 180px));
   margin-right: auto;
   margin-left: 8px;
@@ -178,20 +179,16 @@ body {
   border-color: rgba(255, 255, 255, 0.38);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
 }
+/**
+ * ⚠ 曾經是 position: absolute; left: 50%（釘在 topbar 正中）。
+ *   改為流內 flex 項目後，位置由 order 決定，
+ *   hover / active 的位移交還給 .topbar-btn 的通用規則 ——
+ *   不必再為每個狀態重寫一次完整的 translate()。
+ */
 #toggle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  order: 4;
+  flex: 0 0 auto;
   min-width: 84px;
-}
-
-#toggle:hover {
-  transform: translate(-50%, calc(-50% - 1px));
-}
-
-#toggle:active {
-  transform: translate(-50%, -50%) scale(0.98);
 }
 
 .topbar-btn {
@@ -248,19 +245,10 @@ body {
 /* =========================
    Calibration button
 ========================= */
+/** ⚠ 曾經是 position: absolute; left: 39%。理由同 #toggle。 */
 .calibrate-btn {
-  position: absolute;
-  left: 39%;
-  top: 50%;
-  transform: translate(calc(-50% + 72px), -50%);
-}
-
-.calibrate-btn:hover {
-  transform: translate(calc(-50% + 72px), calc(-50% - 1px));
-}
-
-.calibrate-btn:active {
-  transform: translate(calc(-50% + 72px), -50%) scale(0.98);
+  order: 3;
+  flex: 0 0 auto;
 }
 
 .calibrate-btn.is-active {
@@ -278,6 +266,7 @@ body {
   50% { box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 8px rgba(76, 175, 80, 0.15); }
 }
 .settings-wrap {
+  order: 1;
   position: relative;
   display: flex;
   align-items: center;
@@ -492,6 +481,7 @@ body {
 }
 
 .media-tools {
+  order: 6;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -733,43 +723,25 @@ body {
 }
 
 @media (max-width: 1100px) {
+  /**
+   * ⚠ 這裡原本切換成三欄 grid，是為了收拾 #toggle 與 .calibrate-btn
+   *   的絕對定位。那兩顆已改成流內項目，grid 反而會把四顆按鈕拆到不同列。
+   *
+   *   改為維持 flex 並允許換行：四顆按鈕留在第一列靠左，
+   *   .hit-display 與 .media-tools 各自佔滿一整列。
+   *
+   *   下方 @media (max-width: 960px) 仍有 grid-column 宣告，
+   *   在 flex 容器裡會被忽略，無副作用，故保留不動。
+   */
   .topbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     min-height: unset;
   }
 
-  #toggle {
-    position: static;
-    justify-self: end;
-    transform: none;
-  }
-
-  #toggle:hover {
-    transform: translateY(-1px);
-  }
-
-  #toggle:active {
-    transform: scale(0.98);
-  }
-
-  .calibrate-btn {
-    position: static;
-    justify-self: end;
-    transform: none;
-  }
-
-  .calibrate-btn:hover {
-    transform: translateY(-1px);
-  }
-
-  .calibrate-btn:active {
-    transform: scale(0.98);
-  }
-
   .media-tools {
-    grid-column: 1 / -1;
+    flex: 1 1 100%;
     width: 100%;
     max-width: none;
     margin-left: 0;
@@ -779,6 +751,7 @@ body {
   }
 
   .hit-display {
+    flex: 1 1 100%;
     min-width: 0;
     max-width: none;
     width: 100%;
@@ -1147,4 +1120,438 @@ body {
   font-size: clamp(16px, 2.2vw, 22px);
   color: rgba(255,255,255,0.6);
   font-weight: 500;
+}
+
+/* =========================
+   Song mode
+   ── 原 songMode.css，已整份併入本檔 ──
+
+   配色沿用順序鼓 v3 的鼓色：大鼓＝銅、小鼓＝青、Hi-Hat＝霜藍。
+   讓預覽帶不必讀字也能看出樣式，這是配色唯一的功能性用途。
+
+   ⚠ 併檔後 index.html 要移除 songMode.css 那一行 <link>。
+========================= */
+
+:root {
+  --song-kick: #c99a4d; /* 36 大鼓 —— 銅 */
+  --song-snare: #63ab8e; /* 38 小鼓 —— 青 */
+  --song-hat: #7ea9c9; /* 42 Hi-Hat —— 霜藍 */
+  --song-cue: #e9e6dc; /* 引導音 —— 月白 */
+  --song-ink: #12181f;
+  --song-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    monospace;
+}
+
+/* ══ 歌曲清單（topbar）══════════════════════════════════════════════════ */
+
+/**
+ * ⚠ 位置由 order 決定，不由 index.html 的 DOM 順序決定。
+ *
+ *   topbar 的排序統一走 order：
+ *     設定 1 → 歌曲 2 → 校正 3 → 鏡頭 4 → 命中文字 5 → media-tools 6
+ *   要調整前後順序只改這幾個數字。
+ *
+ * ⚠ flex: 0 0 auto 不可省。
+ *   沒有它，topbar 空間不足時這個 wrap 會被壓縮到比按鈕文字還窄，
+ *   文字就會溢出盒外疊到隔壁按鈕上。
+ *
+ * ⚠ position: relative 是下拉面板的定位基準，也不可省。
+ */
+.song-lib-wrap {
+  order: 2;
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  z-index: 25;
+}
+
+/* 面板開啟時，按鈕維持高亮 —— 讓使用者知道這個下拉是誰開的 */
+.song-lib-btn.is-open {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+/**
+ * 面板定位：與 .settings-panel 一致 —— 靠按鈕左緣，不置中。
+ *
+ * ⚠ 曾經用 left: 50% + translateX(-50%)。
+ *   那在按鈕位於畫面中段時是對的，但四顆按鈕改成一律靠左之後，
+ *   置中會讓面板往左溢出、切齊視窗邊緣，看起來像是貼在頁面上而不是
+ *   從按鈕展開的。靠左對齊才讀得出「這個面板屬於哪顆按鈕」。
+ *
+ * ⚠ 其餘數值刻意抄 .settings-panel：圓角、背景、邊框、陰影、
+ *   backdrop-filter、z-index、top 間距。
+ *   兩個下拉在同一條 topbar 上，長得不一樣會很突兀。
+ */
+.song-lib-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 1000;
+
+  width: 340px;
+  max-width: 92vw;
+  max-height: 70vh;
+  overflow-y: auto;
+
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(15, 15, 18, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.song-lib-head {
+  margin: 0 0 11px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.song-lib-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.song-lib-item:hover,
+.song-lib-item:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(233, 230, 220, 0.32);
+  outline: none;
+}
+
+.song-lib-item:hover .song-lib-cover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.song-lib-item:last-of-type {
+  margin-bottom: 0;
+}
+
+.song-lib-cover {
+  flex: 0 0 auto;
+  width: 74px;
+  height: 44px;
+  border-radius: 6px;
+  background: #2a323d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 16px;
+  overflow: hidden;
+}
+
+.song-lib-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.song-lib-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.song-lib-title {
+  font-size: 13px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-lib-sub {
+  margin-top: 2px;
+  font-family: var(--song-mono);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.song-lib-hint {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ══ player-card 內的本機影片 ═══════════════════════════════════════════ */
+
+.player-host,
+.player-host .player,
+.player-host iframe {
+  width: 100%;
+  height: 100%;
+}
+
+.song-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+  object-fit: contain;
+}
+
+.song-title {
+  position: absolute;
+  left: 10px;
+  top: 9px;
+  z-index: 4;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.song-exit-btn {
+  position: absolute;
+  right: 9px;
+  top: 9px;
+  z-index: 4;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.song-exit-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+/* ══ HUD（camera-frame 底部中央）═══════════════════════════════════════ */
+
+.song-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 6.5%;
+  transform: translateX(-50%);
+  z-index: 3;
+  width: min(60%, 620px);
+  text-align: center;
+  pointer-events: none;
+}
+
+.song-wait-text {
+  margin: 0;
+  padding: 14px 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+/* ── 引導拍 ── */
+
+.song-cue-beats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.song-cue-beat {
+  height: 58px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--song-mono);
+  font-size: 22px;
+  color: rgba(233, 230, 220, 0.42);
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.song-cue-beat[data-accent="1"] {
+  font-size: 26px;
+}
+
+.song-cue-beat[data-state="passed"] {
+  color: var(--song-cue);
+  border-color: rgba(233, 230, 220, 0.4);
+  background: rgba(233, 230, 220, 0.14);
+}
+
+.song-cue-beat[data-state="now"] {
+  color: var(--song-ink);
+  background: var(--song-cue);
+  border-color: var(--song-cue);
+}
+
+.song-cue-none {
+  margin: 0;
+  padding: 18px 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── 預覽帶 ── */
+
+.song-ribbon-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.song-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 58px;
+  overflow: hidden;
+}
+
+.song-rib {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--song-mono);
+  font-style: normal;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.song-rib[data-midi="36"] {
+  color: var(--song-kick);
+  border-color: rgba(201, 154, 77, 0.5);
+}
+.song-rib[data-midi="38"] {
+  color: var(--song-snare);
+  border-color: rgba(99, 171, 142, 0.5);
+}
+.song-rib[data-midi="42"] {
+  color: var(--song-hat);
+  border-color: rgba(126, 169, 201, 0.5);
+}
+
+/* 最左邊那顆是下一次打下去會發出的音 —— 放大以示區別 */
+.song-rib[data-head="1"] {
+  width: 58px;
+  height: 58px;
+  border-radius: 10px;
+  font-size: 28px;
+  color: var(--song-ink);
+}
+.song-rib[data-head="1"][data-midi="36"] {
+  background: var(--song-kick);
+  border-color: var(--song-kick);
+}
+.song-rib[data-head="1"][data-midi="38"] {
+  background: var(--song-snare);
+  border-color: var(--song-snare);
+}
+.song-rib[data-head="1"][data-midi="42"] {
+  background: var(--song-hat);
+  border-color: var(--song-hat);
+}
+
+/* 燈號 = 剛剛發出的那一顆。與預覽帶頭顆對照即可驗證派發是否正確。 */
+.song-lamp {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--song-mono);
+  font-size: 19px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+}
+.song-lamp[data-midi="36"] {
+  color: var(--song-ink);
+  background: var(--song-kick);
+  border-color: var(--song-kick);
+}
+.song-lamp[data-midi="38"] {
+  color: var(--song-ink);
+  background: var(--song-snare);
+  border-color: var(--song-snare);
+}
+.song-lamp[data-midi="42"] {
+  color: var(--song-ink);
+  background: var(--song-hat);
+  border-color: var(--song-hat);
+}
+
+/* ── 游標 ── */
+
+.song-cursor-wrap {
+  margin-top: 9px;
+}
+
+.song-cursor-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.song-cursor-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: rgba(233, 230, 220, 0.85);
+  transition: width 0.1s linear;
+}
+
+.song-cursor-text {
+  margin: 7px 0 0;
+  font-family: var(--song-mono);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .song-cue-beat,
+  .song-cursor-bar i,
+  .song-lib-item,
+  .song-exit-btn {
+    transition: none !important;
+  }
 }

@@ -29,12 +29,24 @@
 
       <div class="hit-display" id="hitDisplay" aria-live="polite"></div>
 
-      <button id="toggle" class="topbar-btn">關閉鏡頭</button>
+      <!-- ══ 歌曲模式入口 ══
+           位置：hitDisplay 與「校正」之間。
+           ⚠ 刻意排在 #toggle（開啟鏡頭）之前 —— 那顆按鈕的文字長度會隨狀態
+             變動（開啟鏡頭 / 關閉鏡頭），排在它後面會讓歌曲鈕左右跳動。 -->
+      <div class="song-lib-wrap">
+        <button id="songLibBtn" class="topbar-btn song-lib-btn">
+          <i class="fas fa-music"></i>
+          歌曲
+        </button>
+        <div class="song-lib-panel is-hidden" id="songLibPanel"></div>
+      </div>
 
       <button id="calibrateBtn" class="topbar-btn calibrate-btn">
         <i class="fas fa-crosshairs"></i>
         校正
       </button>
+
+      <button id="toggle" class="topbar-btn">關閉鏡頭</button>
 
       <div class="media-tools">
         <div class="midi-library-panel">
@@ -64,6 +76,26 @@
         <div class="camera-frame">
           <video id="webcam" autoplay playsinline></video>
           <canvas id="output"></canvas>
+        </div>
+
+        <!-- ══ 歌曲模式 HUD ══
+             位置：camera-frame 底部中央。使用者站著打鼓、離螢幕有距離，
+             放側邊面板等於不存在。z-index 低於 calibOverlay。 -->
+        <div class="song-hud is-hidden" id="songHud">
+          <p class="song-wait-text is-hidden" id="songWaitText">請站進鏡頭</p>
+
+          <!-- 引導拍與預覽帶互斥顯示，切換點在 main.js 的 hudLoop -->
+          <div class="song-cue-beats" id="songCueBeats"></div>
+
+          <div class="song-ribbon-row is-hidden" id="songRibbonRow">
+            <div class="song-ribbon" id="songRibbon"></div>
+            <span class="song-lamp" id="songLamp" data-midi="">—</span>
+          </div>
+
+          <div class="song-cursor-wrap" id="songCursorWrap">
+            <div class="song-cursor-bar"><i id="songCursorFill"></i></div>
+            <p class="song-cursor-text" id="songCursorText">0 / 0</p>
+          </div>
         </div>
 
         <!-- 校準 Overlay -->
@@ -120,7 +152,25 @@
 
       <div id="ytPanel" class="player-card is-hidden">
         <div class="video-wrapper">
-          <div class="player" id="player"></div>
+          <!-- ⚠ YT.Player 會用 iframe「取代」你給它的 div，destroy 後那個 div
+               就不存在了。因此改成宿主容器，由 ytAdapter 每次自己生子 div。 -->
+          <div class="player-host" id="playerHost"></div>
+
+          <!-- 歌曲模式的本機影片，與 playerHost 互斥顯示 -->
+          <video
+            id="songVideo"
+            class="song-video is-hidden"
+            playsinline
+          ></video>
+
+          <span class="song-title is-hidden" id="songTitle"></span>
+          <button
+            class="song-exit-btn is-hidden"
+            id="songExitBtn"
+            aria-label="退出歌曲模式"
+          >
+            <i class="fas fa-xmark"></i>
+          </button>
 
           <div class="overlay-play" id="overlayPlay">
             <i class="fas fa-play"></i>
