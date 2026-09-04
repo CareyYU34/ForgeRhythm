@@ -35,6 +35,7 @@ import { createAdaptiveMonitor } from "./poseEngine/adaptiveMonitor.js";
 
 // ── 歌曲模式 ──
 import { SONG_LIBRARY } from "./songMode/manifest.js";
+import { TUNING } from "./songMode/tuning.js";
 import { createSongUI } from "./songMode/songUI.js";
 import { createSongSession } from "./songMode/songSession.js";
 import { createHitRouter } from "./songMode/hitRouter.js";
@@ -168,13 +169,17 @@ const state = {
 const zoneSound = createDefaultZoneSound();
 
 // ⚠ 必須保留整個 audioEngine 物件 ——
-//   歌曲模式需要 playMidi / scheduleClick / cancelScheduled / now / isReady。
+//   歌曲模式需要 playMidi / scheduleCue / cancelScheduled / now / isReady。
 //   原本的解構寫法會讓這些方法拿不到。
 const audioEngine = createAudioEngine(SOUND_LIBRARY);
 const { initAudio, playZone, setOutputVolume } = audioEngine;
 
 const { replaceHits } = initHitDisplay(hitDisplayEl, 1);
 setOutputVolume(state.outputGain);
+
+// ⚠ 引導音走獨立匯流排，與 outputGain 完全脫鉤。
+//   使用者把打擊音量調小時，節拍器必須維持原音量。
+audioEngine.setCueVolume(TUNING.CUE_BUS_GAIN);
 
 const getRect = () => getVideoDrawRect({ video, canvas });
 const syncCanvas = () => syncCanvasToCameraFrame({ frameEl, canvas });
@@ -292,8 +297,13 @@ const stopCam = () => {
 // ⚠ 刻意獨立於 poseLoop 的 rAF 迴圈。
 //   那條迴圈綁在鏡頭上、職責是姿態偵測，不應該塞入 HUD 更新。
 //
-// 本迴圈只做一件事：依影片時間切換「引導拍 ↔ 預覽帶」。
-// 發聲路徑完全在事件驅動的 hitRouter.route 裡，不經過這裡。
+// 本迴圈做三件事：
+//   1. 區塊對齊（唯一的每幀時間錨點）
+//   2. 前導倒數
+//   3. 節拍格線的換頁與指針
+//
+// 發聲路徑完全在事件驅動的 hitRouter.route 裡，不經過這裡 ——
+// 但 route 也會呼叫一次 syncBlock，用來消除本迴圈 16 ms 空窗造成的競態。
 
 function hudLoop() {
   requestAnimationFrame(hudLoop);
@@ -304,12 +314,30 @@ function hudLoop() {
 
   const tMs = transport.getCurrentTime() * 1000;
 
+  // ⚠ 對齊必須在讀取 sequencer 狀態之前，
+  //   否則這一幀畫出來的格線會是對齊前的舊游標。
+  if (songSession.syncBlock(tMs)) {
+    songUI.invalidateBlock();
+  }
+
+  // 倒數自行依時間決定顯示 / 隱藏 / 「開始」，不受階段切換控制
+  songUI.updateCountdown(tMs);
+
   if (tMs < songSession.getFirstOnsetMs()) {
     songUI.showCuePhase();
-    songUI.updateCueLamps(tMs);
-  } else {
-    songUI.showRibbonPhase();
+    return;
   }
+
+  songUI.showRibbonPhase();
+
+  const barGrid = songSession.getBarGrid();
+  const chart = songSession.getChart();
+  const sequencer = songSession.getSequencer();
+  if (!barGrid || !chart || !sequencer) return;
+
+  const blockIdx = barGrid.blockIndexAt(tMs + TUNING.BLOCK_FLIP_LEAD_MS);
+  songUI.ensureBlock({ chart, barGrid, blockIdx, sequencer });
+  songUI.updateBlockHead(tMs, barGrid, blockIdx);
 }
 
 async function bootstrap() {

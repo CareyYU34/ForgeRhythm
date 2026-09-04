@@ -84,18 +84,39 @@
         <div class="song-hud is-hidden" id="songHud">
           <p class="song-wait-text is-hidden" id="songWaitText">請站進鏡頭</p>
 
-          <!-- 引導拍與預覽帶互斥顯示，切換點在 main.js 的 hudLoop -->
-          <div class="song-cue-beats" id="songCueBeats"></div>
-
+          <!-- 節拍格線：依時間定位，每兩小節整批換頁（L1） -->
           <div class="song-ribbon-row is-hidden" id="songRibbonRow">
-            <div class="song-ribbon" id="songRibbon"></div>
+            <div class="song-block" id="songBlock">
+              <div class="song-block-grid" id="songBlockGrid"></div>
+              <div class="song-block-notes" id="songBlockNotes"></div>
+              <p class="song-block-rest is-hidden" id="songBlockRest">休息</p>
+              <i class="song-block-head" id="songBlockHead"></i>
+            </div>
             <span class="song-lamp" id="songLamp" data-midi="">—</span>
           </div>
 
-          <div class="song-cursor-wrap" id="songCursorWrap">
+          <!-- ⚠ 除錯用，預設隱藏。DOM 必須保留 ——
+            這是唯一能看出游標錯位的視覺輸出，
+            區塊對齊出問題時把 TUNING.SHOW_DEBUG_CURSOR 打開。 -->
+          <div class="song-cursor-wrap is-hidden" id="songCursorWrap">
             <div class="song-cursor-bar"><i id="songCursorFill"></i></div>
             <p class="song-cursor-text" id="songCursorText">0 / 0</p>
           </div>
+        </div>
+        <!-- ══ 前導倒數 ══
+          ⚠ 必須是 .stage 的直接子元素，與 .song-hud 平行。
+          .song-hud 是 bottom 定位的，放進去無法置中於畫面。 -->
+        <div
+          class="song-countdown is-hidden"
+          id="songCountdown"
+          aria-hidden="true"
+        >
+          <span
+            class="song-countdown-num"
+            id="songCountdownNum"
+            data-go="0"
+            data-pop="0"
+          ></span>
         </div>
 
         <!-- 校準 Overlay -->

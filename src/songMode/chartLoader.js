@@ -2,25 +2,17 @@
  * songMode/chartLoader.js
  *
  * 職責：純資料轉換。Tone.js 格式的 MIDI JSON → onset 序列。
- * 狀態：無狀態（nearestIndex 為純函式）。
+ * 狀態：無狀態（nearestIndex / firstIndexAtOrAfter 為純函式）。
  *
- * ═══ 相對於順序鼓 v3 的差異（規格書 §3）═══
+ * ═══ ticks / ppq / timeSignatures ═══
  *
- * 新增三項「保留但不使用」的資料：
- *
- *   1. 每顆 onset 的 ticks
- *   2. header.ppq
- *   3. header.timeSignatures
- *
- * ⚠ 第一版沒有任何模組消費它們。
- *   保留的理由是 L1（兩小節區塊重對齊）需要，而現在留成本為零 ——
- *   之後要補得回頭改資料層並重新驗證整條鏈路。
- *   請不要因為「沒人用」就把它們刪掉。
+ * L1 已啟用這三項資料，消費者是 songMode/barGrid.js。
+ * 它們不再是「保留但不使用」—— 刪掉會直接讓區塊對齊失效。
  *
  * ═══ baseBpm 的重要性 ═══
  *
- * ⚠ 引導音的時間完全由 baseBpm 推算。BPM 錯了，四顆 click 的間距就錯，
- *   而那正是這一版唯一在教使用者的東西。
+ * ⚠ 引導音的時間完全由 baseBpm 推算，L1 之後連小節格線也是。
+ *   BPM 錯了，四顆 click 的間距錯、區塊邊界也錯。
  *   因此 BPM 缺失時必須推估並在 UI 上明示「推估」，不可靜默使用預設值。
  */
 
@@ -118,7 +110,7 @@ export function loadChart(json) {
       midi: n.midi,
       name: n.name ?? String(n.midi),
       velocity: Number.isFinite(n.velocity) ? n.velocity : 1,
-      // ⚠ L1 需要。第一版無消費者，請勿刪除。
+      // ⚠ barGrid 的地基。缺了會讓區塊格線降級。
       ticks: Number.isFinite(n?.ticks) ? n.ticks : null,
     }))
     .sort((a, b) => a.time - b.time);
@@ -149,13 +141,14 @@ export function loadChart(json) {
     bpmEstimated = true;
     warnings.push(
       `譜面未提供 BPM，已從音符間隔推估為 ${baseBpm.toFixed(1)}。` +
-        `引導音的間距完全依賴這個值，請確認是否正確。`,
+        `引導音的間距與區塊格線都依賴這個值，請確認是否正確。`,
     );
   }
 
   if (Array.isArray(header.tempos) && header.tempos.length > 1) {
     warnings.push(
-      `譜面有 ${header.tempos.length} 段速度變化，只使用第一段（${baseBpm.toFixed(1)}）計算引導音。`,
+      `譜面有 ${header.tempos.length} 段速度變化，只使用第一段（${baseBpm.toFixed(1)}）` +
+        `計算引導音與小節格線。中後段的區塊邊界會逐漸偏移。`,
     );
   }
 
@@ -180,15 +173,21 @@ export function loadChart(json) {
     warnings,
     duration: onsetList[onsetList.length - 1].time,
 
-    // ── 以下兩項為 L1 預留，第一版無消費者。⚠ 請勿刪除。 ──
+    // ── barGrid 的資料來源。⚠ 請勿刪除。 ──
     ppq: Number.isFinite(header.ppq) ? header.ppq : 480,
     timeSignatures: Array.isArray(header.timeSignatures)
       ? header.timeSignatures
       : [{ ticks: 0, timeSignature: [4, 4] }],
 
     /**
-     * 二分搜尋：距離指定時間最近的 onset index。
-     * 第一版未使用；保留供 L1 區塊重對齊。
+     * 二分搜尋：距離指定時間「最近」的 onset index。
+     *
+     * ⚠ 目前無消費者，保留供 L2 長停頓重對齊 —— 那個情境要的確實是
+     *   「最近的」（使用者停很久後從某處接回來）。
+     *
+     * ⚠ 不可用於區塊邊界對齊。邊界上它可能回傳「上一區塊的最後一顆」，
+     *   造成游標往回跳、剛打過的音再響一次。那裡要用
+     *   firstIndexAtOrAfter。
      */
     nearestIndex(t) {
       const L = onsetList;
@@ -201,6 +200,26 @@ export function loadChart(json) {
       }
       if (lo > 0 && Math.abs(L[lo - 1].time - t) <= Math.abs(L[lo].time - t)) {
         return lo - 1;
+      }
+      return lo;
+    },
+
+    /**
+     * 二分搜尋（lower bound）：第一個滿足 time >= t 的 onset index。
+     *
+     * 全部小於 t 時回傳 onsetList.length —— 這正是「譜面已結束」的
+     * 游標值，songSession 的對齊因此不需要額外的邊界處理。
+     *
+     * 消費者：songSession.syncBlock、songUI.renderBlock
+     */
+    firstIndexAtOrAfter(t) {
+      const L = onsetList;
+      let lo = 0;
+      let hi = L.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (L[mid].time < t) lo = mid + 1;
+        else hi = mid;
       }
       return lo;
     },

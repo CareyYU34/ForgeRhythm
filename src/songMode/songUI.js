@@ -3,27 +3,34 @@
  *
  * 職責：歌曲模式的所有 DOM 操作。
  *
- * ═══ 版面決策（規格書 §10.2）═══
+ * ═══ 版面決策 ═══
  *
- * HUD 放在 camera-frame 底部中央，不放側邊面板。
- * 使用者是站著全身打鼓、離螢幕有距離的 —— 放在 player-card 旁邊等於不存在。
- * 放中央底部則落在他本來就在看的鏡像視野內，且不會擋住自己的身體。
+ * 底部 HUD 放在 camera-frame 底部中央 —— 使用者是站著全身打鼓、離螢幕
+ * 有距離的，放側邊面板等於不存在。
  *
- * ⚠ 引導拍與預覽帶互斥顯示。
- *   畫面上永遠只有一組資訊在爭取注意力，這對站在遠處的使用者比
- *   「兩塊都在」重要得多。切換點由 main.js 的 HUD 迴圈判斷。
+ * 前導倒數則放在畫面正中央，是獨立於 HUD 的元素。
  *
- * ═══ 三個獨立訊號源（規格書 §13.2）═══
+ * ⚠ #songCountdown 不能放進 .song-hud。那個容器是 bottom 定位的，
+ *   放進去無法置中於畫面。
  *
- * 本版沒有任何診斷輸出，靠這三者交叉比對：
+ * ═══ 兩個訊號源 ═══
  *
  *   1. topbar 的命中文字（#hitDisplay，poseLoop 提供）
  *   2. HUD 的燈號（剛剛發出的音）
- *   3. HUD 的預覽帶頭顆（下一次會發出的音）
  *
- * 燈號 ≠ 上一幀的預覽帶頭顆 → router 或 sequencer 有錯。
- * 命中文字有跳但游標沒動 → 前奏閘門誤判或分流錯誤。
- * 命中文字一次跳兩下 → 同幀多重觸發（這正是本版要量測的資料）。
+ * 第三個訊號源（游標 `102 / 487`）在 L1 之後預設隱藏，
+ * 由 TUNING.SHOW_DEBUG_CURSOR 控制。區塊對齊出問題時把它打開 ——
+ * 它是唯一能看出游標錯位的視覺輸出。
+ *
+ * ═══ 節拍格線的更新頻率紀律 ═══
+ *
+ *   重建節點   → 只在換塊時（約 6 秒一次）
+ *   指針位置   → 每幀，只寫 style.left
+ *   音符狀態   → 每次打擊，只切 dataset
+ *
+ * ⚠ 打擊熱路徑上不得再出現 innerHTML 全量重建。
+ *   舊版 renderRibbon 每次打擊重建 14 個節點，改成區塊制後
+ *   這個成本應該消失，而不是平移到別處。
  */
 
 import { TUNING } from "./tuning.js";
@@ -48,9 +55,19 @@ export function createSongUI() {
     title: $("songTitle"),
     exitBtn: $("songExitBtn"),
     hud: $("songHud"),
-    cueBeats: $("songCueBeats"),
+
+    // ── 前導倒數（B 案）──
+    countdown: $("songCountdown"),
+    countdownNum: $("songCountdownNum"),
+
+    // ── 節拍格線（C 案）──
     ribbonRow: $("songRibbonRow"),
-    ribbon: $("songRibbon"),
+    block: $("songBlock"),
+    blockGrid: $("songBlockGrid"),
+    blockNotes: $("songBlockNotes"),
+    blockHead: $("songBlockHead"),
+    blockRest: $("songBlockRest"),
+
     lamp: $("songLamp"),
     cursorFill: $("songCursorFill"),
     cursorText: $("songCursorText"),
@@ -58,11 +75,22 @@ export function createSongUI() {
     waitText: $("songWaitText"),
   };
 
+  // ── 倒數狀態 ──
   let cues = [];
+  let firstOnsetMs = Infinity;
+  /** 上次顯示的內容，用來判斷是否需要觸發彈跳 */
+  let lastShown = null;
+  let popTimerId = null;
+
+  // ── 格線狀態 ──
+  /** 目前畫在畫面上的區塊。null = 需要重畫 */
+  let renderedBlockIdx = null;
+  /** 目前區塊內音符的 DOM 節點，index 與 chart.onsetList 的絕對 index 對應 */
+  let blockNoteNodes = [];
+  let blockFirstIndex = 0;
+  let lastCursorPainted = -1;
 
   // ── 歌曲清單的展開 / 收合 ──
-  // 沿用 initSettingsPanel 的 pattern：按鈕與面板 stopPropagation，
-  // document click 收合。
   el.libBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     el.libPanel.classList.toggle("is-hidden");
@@ -74,6 +102,44 @@ export function createSongUI() {
 
   function closeLibrary() {
     el.libPanel?.classList.add("is-hidden");
+  }
+
+  function hideCountdown() {
+    el.countdown?.classList.add("is-hidden");
+    if (el.countdownNum) {
+      el.countdownNum.dataset.go = "0";
+      el.countdownNum.dataset.pop = "0";
+    }
+    lastShown = null;
+  }
+
+  /**
+   * 換數字時的縮放彈跳。
+   *
+   * ⚠ 不用 CSS @keyframes 自走動畫 —— 自走動畫時長固定，
+   *   影片暫停或 seek 後會與拍點脫節。狀態必須由影片時間驅動，
+   *   這裡只負責「觸發一次 transition 再回彈」。
+   */
+  function pop() {
+    if (!el.countdownNum) return;
+    if (popTimerId !== null) clearTimeout(popTimerId);
+    el.countdownNum.dataset.pop = "1";
+    popTimerId = setTimeout(() => {
+      if (el.countdownNum) el.countdownNum.dataset.pop = "0";
+      popTimerId = null;
+    }, TUNING.COUNTDOWN_POP_MS);
+  }
+
+  function showCountdownText(text, isGo) {
+    if (!el.countdown || !el.countdownNum) return;
+    el.countdown.classList.remove("is-hidden");
+    el.countdownNum.dataset.go = isGo ? "1" : "0";
+
+    if (text !== lastShown) {
+      el.countdownNum.textContent = text;
+      lastShown = text;
+      pop();
+    }
   }
 
   return {
@@ -172,76 +238,220 @@ export function createSongUI() {
       // YT player 已 destroy，面板收起，使用者需重新載入連結
       el.ytPanel?.classList.add("is-hidden");
       if (el.overlayPlay) el.overlayPlay.style.display = "";
+
+      // ⚠ 必須隱藏倒數，否則退出後畫面正中央會殘留一個大字
+      hideCountdown();
+
       cues = [];
+      firstOnsetMs = Infinity;
+      renderedBlockIdx = null;
+      blockNoteNodes = [];
+      lastCursorPainted = -1;
     },
 
     // ═══ 等待姿態就緒 ═══════════════════════════════════════════════════
 
     showWaitingPose() {
       el.waitText?.classList.remove("is-hidden");
-      el.cueBeats?.classList.add("is-hidden");
       el.ribbonRow?.classList.add("is-hidden");
       el.cursorWrap?.classList.add("is-hidden");
+      hideCountdown();
     },
 
     hideWaitingPose() {
       el.waitText?.classList.add("is-hidden");
-      el.cursorWrap?.classList.remove("is-hidden");
+      // ⚠ 游標進度條預設隱藏，只在除錯時打開
+      if (TUNING.SHOW_DEBUG_CURSOR) {
+        el.cursorWrap?.classList.remove("is-hidden");
+      }
     },
 
-    // ═══ 引導拍 ═════════════════════════════════════════════════════════
+    // ═══ 前導倒數 ═══════════════════════════════════════════════════════
 
-    renderCueBeats(cueList, quarterMs) {
+    /** songSession.enter 時注入引導音時刻表 */
+    setCues(cueList, onsetMs) {
       cues = cueList ?? [];
-      if (!el.cueBeats) return;
+      firstOnsetMs = Number.isFinite(onsetMs) ? onsetMs : Infinity;
+      lastShown = null;
+    },
+
+    /**
+     * 置中倒數。純視覺，不參與發聲。
+     *
+     * 顯示值 = CUE_COUNT − beat + 1
+     *   beat = 1（第一顆 onset 前 4 拍，重音）→ 顯示「4」
+     *   beat = 4（前 1 拍）                    → 顯示「1」
+     *
+     * 數字在兩拍之間持續顯示，不淡出。
+     */
+    updateCountdown(currentTimeMs) {
+      if (!el.countdown) return;
 
       if (!cues.length) {
-        el.cueBeats.innerHTML =
-          '<p class="song-cue-none">本譜不發引導音</p>';
+        hideCountdown();
         return;
       }
 
-      el.cueBeats.innerHTML = cues
-        .map(
-          (c) =>
-            `<div class="song-cue-beat" data-accent="${c.accent ? 1 : 0}" data-state="idle">${c.beat}</div>`,
-        )
-        .join("");
-
-      if (quarterMs) {
-        el.cueBeats.dataset.quarter = quarterMs.toFixed(1);
+      // ── 第一顆音符之後：「開始」，然後收起 ──
+      if (currentTimeMs >= firstOnsetMs) {
+        if (currentTimeMs < firstOnsetMs + TUNING.COUNTDOWN_GO_HOLD_MS) {
+          showCountdownText("開始", true);
+        } else {
+          hideCountdown();
+        }
+        return;
       }
+
+      // ── 找出當前該顯示哪一顆 ──
+      // 最後一個滿足 c.t <= now + LEAD 的 cue。
+      // LEAD 補償 rAF 取樣間隔與影片時間的量化誤差，
+      // 讓數字不會在視覺上晚於聲音。
+      let current = null;
+      for (const c of cues) {
+        if (c.t <= currentTimeMs + TUNING.COUNTDOWN_LEAD_MS) current = c;
+        else break;
+      }
+
+      if (!current) {
+        // 還沒到第一顆引導音
+        hideCountdown();
+        return;
+      }
+
+      showCountdownText(String(TUNING.CUE_COUNT - current.beat + 1), false);
+    },
+
+    // ═══ 節拍格線 ═══════════════════════════════════════════════════════
+
+    /** 強制下一次 ensureBlock 重畫（seek / 跨邊界打擊後呼叫） */
+    invalidateBlock() {
+      renderedBlockIdx = null;
     },
 
     /**
-     * 引導拍指示燈。純視覺，不參與發聲。
-     * 判定沿用順序鼓 v3：d < -60 → idle，d <= 120 → now，否則 passed。
+     * 確保畫面上是指定區塊。已經是了就什麼都不做。
+     *
+     * ⚠ 這是唯一會重建節點的地方，呼叫頻率約每 6 秒一次。
      */
-    updateCueLamps(currentTimeMs) {
-      if (!el.cueBeats || !cues.length) return;
-      const nodes = el.cueBeats.children;
-      for (let i = 0; i < cues.length && i < nodes.length; i++) {
-        const d = currentTimeMs - cues[i].t;
-        nodes[i].dataset.state = d < -60 ? "idle" : d <= 120 ? "now" : "passed";
-      }
-    },
+    ensureBlock({ chart, barGrid, blockIdx, sequencer }) {
+      if (!el.blockNotes || !el.blockGrid) return;
+      if (!chart || !barGrid) return;
+      if (blockIdx === renderedBlockIdx) return;
 
-    // ═══ 預覽帶 ═════════════════════════════════════════════════════════
+      const startMs = barGrid.blockStartMs(blockIdx);
+      const endMs = barGrid.blockEndMs(blockIdx);
+      const spanMs = barGrid.getBlockMs();
+
+      // ⚠ offsetWidth 是強制回流的讀取，必須在任何 replaceChildren 之前，
+      //   否則同一幀內 write-after-read 會讓瀏覽器 layout 兩次。
+      //   每次換塊才發生（約 6 秒一次），不在打擊熱路徑上。
+      const blockWidthPx = el.block ? el.block.offsetWidth : 0;
+
+      // ── 拍線 ──
+      const beats = barGrid.getBeatsPerBlock();
+      const beatsPerBar = barGrid.getBeatsPerBar();
+      const gridFrag = document.createDocumentFragment();
+      for (let b = 0; b < beats; b++) {
+        const line = document.createElement("i");
+        line.className = "song-beat-line";
+        line.dataset.bar = b % beatsPerBar === 0 ? "1" : "0";
+        line.style.left = `${(b / beats) * 100}%`;
+        gridFrag.appendChild(line);
+      }
+      el.blockGrid.replaceChildren(gridFrag);
+
+      // ── 音符 ──
+      const from = chart.firstIndexAtOrAfter(startMs);
+      const to = chart.firstIndexAtOrAfter(endMs);
+
+      blockFirstIndex = from;
+      blockNoteNodes = [];
+
+      const noteFrag = document.createDocumentFragment();
+      let minDeltaMs = Infinity;
+      let prevTime = null;
+      for (let i = from; i < to; i++) {
+        const o = chart.onsetList[i];
+
+        // 密度量測：本區塊相鄰音符的最小時間間隔
+        if (prevTime !== null) {
+          const d = o.time - prevTime;
+          if (d < minDeltaMs) minDeltaMs = d;
+        }
+        prevTime = o.time;
+
+        const node = document.createElement("i");
+        node.className = "song-note";
+        node.dataset.midi = String(o.midi);
+        node.dataset.index = String(i);
+        node.dataset.state = "pending";
+        node.style.left = `${((o.time - startMs) / spanMs) * 100}%`;
+        node.textContent = DRUM_SHORT[o.midi] ?? "?";
+        noteFrag.appendChild(node);
+        blockNoteNodes.push(node);
+      }
+      el.blockNotes.replaceChildren(noteFrag);
+
+      // ── 密度保險 ──
+      // 音符數 < 2 時沒有相鄰間隔可算，一律視為不密集。
+      if (el.block) {
+        const dense =
+          minDeltaMs !== Infinity &&
+          spanMs > 0 &&
+          blockWidthPx > 0 &&
+          (minDeltaMs / spanMs) * blockWidthPx < TUNING.NOTE_SOON_MIN_GAP_PX;
+        el.block.dataset.dense = dense ? "1" : "0";
+      }
+
+      // ── 空區塊 ──
+      el.blockRest?.classList.toggle("is-hidden", blockNoteNodes.length > 0);
+
+      renderedBlockIdx = blockIdx;
+      lastCursorPainted = -1;
+      if (sequencer) this.updateBlockStates(sequencer);
+    },
 
     /**
-     * 最左邊那顆放大，代表「下一次打下去會發出的音」。
-     * 這讓「順序派發」變成可見的 —— 聽到的鼓應該和放大那顆一致。
+     * 播放位置指針。每幀呼叫，只寫 style.left。
+     *
+     * 這是「換頁不做提前量」的補償 —— 使用者從指針位置就能預期
+     * 何時翻頁，不需要兩個區塊同時在畫面上爭取注意力。
      */
-    renderRibbon(sequencer) {
-      if (!el.ribbon || !sequencer) return;
-      const next = sequencer.peek(TUNING.RIBBON_LENGTH);
-      el.ribbon.innerHTML = next
-        .map(
-          (o, i) =>
-            `<i class="song-rib" data-midi="${o.midi}" data-head="${i === 0 ? 1 : 0}">${DRUM_SHORT[o.midi] ?? "?"}</i>`,
-        )
-        .join("");
+    updateBlockHead(currentTimeMs, barGrid, blockIdx) {
+      if (!el.blockHead || !barGrid) return;
+      const startMs = barGrid.blockStartMs(blockIdx);
+      const pct = ((currentTimeMs - startMs) / barGrid.getBlockMs()) * 100;
+      el.blockHead.style.left = `${Math.max(0, Math.min(100, pct))}%`;
     },
+
+    /**
+     * 音符狀態。每次打擊呼叫，只切 dataset。
+     *
+     * next 保證與下一次打擊實際發出的音一致 ——
+     * 這是 L1 雙向硬對齊要達成的核心性質。
+     */
+    updateBlockStates(sequencer) {
+      if (!sequencer || !blockNoteNodes.length) return;
+      const cursor = sequencer.getCursor();
+      // ⚠ 打擊熱路徑上唯一的成本護欄，不要移除。
+      if (cursor === lastCursorPainted) return;
+
+      const soonEnd = cursor + TUNING.NOTE_SOON_COUNT;
+      for (const node of blockNoteNodes) {
+        const i = Number(node.dataset.index);
+        node.dataset.state =
+          i < cursor
+            ? "done"
+            : i === cursor
+              ? "next"
+              : i <= soonEnd
+                ? "soon"
+                : "pending";
+      }
+      lastCursorPainted = cursor;
+    },
+
+    // ═══ 游標（除錯用，預設隱藏）═══════════════════════════════════════
 
     updateCursor(cursor, total) {
       if (el.cursorText) el.cursorText.textContent = `${cursor} / ${total}`;
@@ -265,19 +475,20 @@ export function createSongUI() {
     /** hitRouter 每次派發後呼叫 */
     onHitResult(res, sequencer) {
       this.updateLamp(res);
-      this.renderRibbon(sequencer);
+      this.updateBlockStates(sequencer);
       this.updateCursor(sequencer.getCursor(), sequencer.getTotal());
     },
 
-    // ═══ 階段切換（引導拍 ↔ 預覽帶）═════════════════════════════════════
+    // ═══ 階段切換 ═══════════════════════════════════════════════════════
+    //
+    // ⚠ 倒數的顯示與否完全由 updateCountdown 依影片時間決定，
+    //   不由階段切換控制 —— 兩套控制會在 seek 時互相打架。
 
     showCuePhase() {
-      el.cueBeats?.classList.remove("is-hidden");
       el.ribbonRow?.classList.add("is-hidden");
     },
 
     showRibbonPhase() {
-      el.cueBeats?.classList.add("is-hidden");
       el.ribbonRow?.classList.remove("is-hidden");
     },
   };

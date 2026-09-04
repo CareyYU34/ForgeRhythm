@@ -1140,6 +1140,32 @@ body {
   --song-ink: #12181f;
   --song-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
     monospace;
+
+  /* ── 節拍格線尺寸 ──
+   *
+   * ⚠ 調整格線大小只改這裡，不要去下面的規則裡改死值。
+   *
+   *   980px 的區塊在八分音符密度下每格 61.25px。next 是 64px ——
+   *   它會壓過左右鄰居各約 1.4px，這是刻意的：配合 z-index 分層後
+   *   讀起來是「浮起的那一顆」而非「撞在一起」。不要縮到 60px 去避開。
+   */
+  --song-block-w: min(88%, 980px);
+  --song-block-h: 88px;
+
+  /* 所有音符的實體尺寸統一為 base，四個階級靠 transform scale 表現。
+     見下方 .song-note 的說明。 */
+  --song-note-base: 64px;
+  --song-note-scale-next: 1;
+  --song-note-scale-soon: 0.5;
+  --song-note-scale-pending: 0.3125;
+  --song-note-scale-done: 0.25;
+
+  /* 字級同樣會被 scale 縮小，這裡填的是 scale 前的值。 */
+  --song-font-next: 34px;
+  --song-font-soon: 32px;
+
+  --song-lamp-size: 56px;
+  --song-lamp-font: 26px;
 }
 
 /* ══ 歌曲清單（topbar）══════════════════════════════════════════════════ */
@@ -1357,10 +1383,10 @@ body {
 .song-hud {
   position: absolute;
   left: 50%;
-  bottom: 6.5%;
+  bottom: 4%;
   transform: translateX(-50%);
   z-index: 3;
-  width: min(60%, 620px);
+  width: var(--song-block-w);
   text-align: center;
   pointer-events: none;
 }
@@ -1374,132 +1400,225 @@ body {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 }
 
-/* ── 引導拍 ── */
+/* ── 前導倒數（畫面正中央）── */
+/*
+ * ⚠ .song-countdown 是 .stage 的直接子元素，不在 .song-hud 內。
+ *   .song-hud 是 bottom 定位的，放進去無法置中於畫面。
+ */
 
-.song-cue-beats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-.song-cue-beat {
-  height: 58px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+.song-countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+}
+
+.song-countdown-num {
   font-family: var(--song-mono);
-  font-size: 22px;
-  color: rgba(233, 230, 220, 0.42);
+  font-weight: 700;
+  font-size: clamp(64px, 18vh, 160px);
+  line-height: 1;
+  color: #fff;
+  /* 背景是鏡頭畫面，沒有陰影會看不清 */
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.75);
+  transform: scale(1);
   transition:
-    color 0.12s,
-    border-color 0.12s,
-    background 0.12s;
+    transform 0.12s ease-out,
+    opacity 0.18s;
 }
 
-.song-cue-beat[data-accent="1"] {
-  font-size: 26px;
+/* ⚠ 用 transition 而非 @keyframes。
+   自走動畫時長固定，影片暫停或 seek 後會與拍點脫節 ——
+   狀態必須由影片時間驅動，這裡只負責觸發一次 transition 再回彈。 */
+.song-countdown-num[data-pop="1"] {
+  transform: scale(1.35);
 }
 
-.song-cue-beat[data-state="passed"] {
+.song-countdown-num[data-go="1"] {
+  font-size: clamp(48px, 12vh, 120px);
   color: var(--song-cue);
-  border-color: rgba(233, 230, 220, 0.4);
-  background: rgba(233, 230, 220, 0.14);
 }
 
-.song-cue-beat[data-state="now"] {
-  color: var(--song-ink);
-  background: var(--song-cue);
-  border-color: var(--song-cue);
-}
-
-.song-cue-none {
-  margin: 0;
-  padding: 18px 0;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-/* ── 預覽帶 ── */
+/* ── 節拍格線（兩小節一頁）── */
 
 .song-ribbon-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
 }
 
-.song-ribbon {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 58px;
+.song-block {
+  position: relative;
+  flex: 1 1 auto;
+  height: var(--song-block-h);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.32);
   overflow: hidden;
 }
 
-.song-rib {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 34px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.35);
+.song-block-grid,
+.song-block-notes {
+  position: absolute;
+  inset: 0;
+}
+
+/* 拍線。每小節第一拍加重。 */
+.song-beat-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.song-beat-line[data-bar="1"] {
+  width: 2px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 音符。left 由 songUI.ensureBlock 依時間比例寫入。
+ *
+ * ⚠ 四個階級（next / soon / pending / done）的大小差異一律走 transform
+ *   scale，不改 width / height。
+ *
+ *   原因：所有音符同屬 .song-block-notes 一個容器，改動任何一顆的
+ *   width 都會使整個容器重排。而 updateBlockStates 是每次打擊都會跑的
+ *   熱路徑 —— 走 scale 才能讓這段留在 compositor，不進 layout。
+ *
+ *   三個隨之而來的約束：
+ *   1. 字級會被一起縮小。font-size 填的是 scale 前的值。
+ *   2. 邊框寬度會被一起縮小，所以 soon（scale 0.5）用 2px 才等於 1px。
+ *   3. border-radius 用 % 才能在縮放後維持比例。
+ *
+ *   不加 will-change：16+ 個節點各自提升合成層的記憶體成本高於收益。
+ *
+ * --nc 是這顆音符的鼓色。由 data-midi 設定一次，四個階級共用 ——
+ * 否則每個階級都要再寫三條 midi 規則。
+ */
+.song-note {
+  --nc: rgba(255, 255, 255, 0.45);
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  box-sizing: border-box;
+  width: var(--song-note-base);
+  height: var(--song-note-base);
+  border-radius: 20%;
+  border: 0 solid transparent;
+  background: var(--nc);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--song-mono);
   font-style: normal;
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: var(--song-font-next);
+  /* pending 是無字色塊。字要靠 transparent 藏，不能只靠縮小 ——
+     scale 0.3125 之後 34px 的字仍有約 10px，會在色塊上留下字影。 */
+  color: transparent;
+  transform: translate(-50%, -50%) scale(var(--song-note-scale-pending));
+  transition:
+    transform 0.1s,
+    opacity 0.1s,
+    background-color 0.1s,
+    border-color 0.1s;
 }
 
-.song-rib[data-midi="36"] {
-  color: var(--song-kick);
-  border-color: rgba(201, 154, 77, 0.5);
+.song-note[data-midi="36"] {
+  --nc: var(--song-kick);
 }
-.song-rib[data-midi="38"] {
-  color: var(--song-snare);
-  border-color: rgba(99, 171, 142, 0.5);
+.song-note[data-midi="38"] {
+  --nc: var(--song-snare);
 }
-.song-rib[data-midi="42"] {
-  color: var(--song-hat);
-  border-color: rgba(126, 169, 201, 0.5);
+.song-note[data-midi="42"] {
+  --nc: var(--song-hat);
 }
 
-/* 最左邊那顆是下一次打下去會發出的音 —— 放大以示區別 */
-.song-rib[data-head="1"] {
-  width: 58px;
-  height: 58px;
-  border-radius: 10px;
-  font-size: 28px;
+/* 已經過去的音符。縮到最小 + 壓暗，成為節奏軌跡：
+   看得出剛才打過的節奏形狀，但不與前方競爭注意力。 */
+.song-note[data-state="done"] {
+  transform: translate(-50%, -50%) scale(var(--song-note-scale-done));
+  opacity: 0.28;
+}
+
+/* soon = next 之後的 N 顆（TUNING.NOTE_SOON_COUNT）。
+   保留字母供預讀 —— 使用者需要知道下一顆之後是手還是腳。 */
+.song-note[data-state="soon"] {
+  z-index: 2;
+  transform: translate(-50%, -50%) scale(var(--song-note-scale-soon));
+  background: rgba(0, 0, 0, 0.55);
+  border-width: 2px;
+  border-color: var(--nc);
+  font-size: var(--song-font-soon);
+  color: var(--nc);
+}
+
+/* next = 下一次打下去會發出的音。
+   L1 的雙向硬對齊保證這一顆與實際發聲一致 —— 與燈號對照即可驗證。
+
+   ⚠ z-index 必須高於 .song-block-head，否則指針的細線會從中間穿過。 */
+.song-note[data-state="next"] {
+  z-index: 3;
+  transform: translate(-50%, -50%) scale(var(--song-note-scale-next));
   color: var(--song-ink);
 }
-.song-rib[data-head="1"][data-midi="36"] {
-  background: var(--song-kick);
-  border-color: var(--song-kick);
-}
-.song-rib[data-head="1"][data-midi="38"] {
-  background: var(--song-snare);
-  border-color: var(--song-snare);
-}
-.song-rib[data-head="1"][data-midi="42"] {
-  background: var(--song-hat);
-  border-color: var(--song-hat);
+
+/* 密度保險：本區塊相鄰間距過窄時（十六分音符連打），soon 會被 next
+   整個蓋住 —— 退回兩段式，只留 next 有字。
+   data-dense 由 songUI.ensureBlock 換塊時寫入，見 TUNING.NOTE_SOON_MIN_GAP_PX。 */
+.song-block[data-dense="1"] .song-note[data-state="soon"] {
+  z-index: 1;
+  transform: translate(-50%, -50%) scale(var(--song-note-scale-pending));
+  background: var(--nc);
+  border-width: 0;
+  color: transparent;
 }
 
-/* 燈號 = 剛剛發出的那一顆。與預覽帶頭顆對照即可驗證派發是否正確。 */
+/* 播放位置指針。
+   取代「換頁提前量」—— 使用者從它的位置就能預期何時翻頁，
+   不必讓兩個區塊同時在畫面上爭取注意力。 */
+.song-block-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  /* ⚠ 必須低於 .song-note[data-state="next"] 的 3。
+     next 放大到 64px 後，指針會從它中間穿過。 */
+  z-index: 1;
+  width: 2px;
+  background: rgba(233, 230, 220, 0.85);
+  box-shadow: 0 0 8px rgba(233, 230, 220, 0.5);
+  pointer-events: none;
+}
+
+/* 兩小節內沒有任何音符時 */
+.song-block-rest {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* 燈號 = 剛剛發出的那一顆。與格線上的 next 對照即可驗證派發是否正確。 */
 .song-lamp {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: var(--song-lamp-size);
+  height: var(--song-lamp-size);
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--song-mono);
-  font-size: 19px;
+  font-size: var(--song-lamp-font);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.4);
 }
@@ -1519,7 +1638,11 @@ body {
   border-color: var(--song-hat);
 }
 
-/* ── 游標 ── */
+/* ── 游標（除錯用，預設隱藏）── */
+/*
+ * ⚠ DOM 保留但預設帶 is-hidden，由 TUNING.SHOW_DEBUG_CURSOR 控制。
+ *   這是唯一能看出游標錯位的視覺輸出，區塊對齊出問題時把它打開。
+ */
 
 .song-cursor-wrap {
   margin-top: 9px;
@@ -1548,7 +1671,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .song-cue-beat,
+  .song-countdown-num,
+  .song-note,
   .song-cursor-bar i,
   .song-lib-item,
   .song-exit-btn {

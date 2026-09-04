@@ -5,29 +5,32 @@
  *
  *   打一下 → 發下一顆。就這樣。
  *
- * ═══ 時間紀律（規格書 §15）═══
+ * ═══ 時間紀律 ═══
  *
  *   ⚠ 本模組必須完全不知道時間的存在。
  *
  *   沒有時間參數、沒有 ratio、沒有 drift、沒有 resync、沒有填充音。
- *   前奏閘門刻意放在 hitRouter 而不是這裡 —— 那是發聲路徑上唯一與時間
- *   有關的判斷，讓它留在路由層，本模組才能保持純粹。
  *
- *   L1（兩小節區塊重對齊）要加回來時，這條紀律會讓「時間依賴在哪一層
- *   被重新引入」一目了然。屆時本模組只需新增 setCursor(index)，
- *   判斷邏輯仍然留在 hitRouter。
+ *   L1 已上線，但這條紀律沒有鬆動：setCursor(index) 只接受一個 index，
+ *   不接受時間、不讀時鐘。「現在該對齊到哪一顆」的判斷完全在
+ *   songSession.syncBlock，由 hitRouter 與 main.js 的 hudLoop 共同呼叫。
+ *
+ *   前奏閘門一樣留在 hitRouter。發聲路徑上的兩個時間判斷
+ *   （前奏閘門、區塊對齊）都在路由層，本模組才能保持純粹。
  *
  * ═══ 游標語意 ═══
  *
- *   cursor 指向「下一顆待發的 index」。前進量恆為 1。
+ *   cursor 指向「下一顆待發的 index」。
+ *   打擊時前進量恆為 1；區塊邊界則由 setCursor 直接指定。
  *
- * ═══ 已知代價（規格書 §14）═══
+ * ═══ skipped / rewound ═══
  *
- *   純序列沒有任何機制把游標拉回音樂。
- *   漏打一下，音色序列從此永久錯開一顆，且不會自我修正。
- *   唯一的復位手段是退出歌曲模式再重進（sequencer 會被重建）。
+ *   這兩個計數是 L1 最有價值的量測輸出：
  *
- *   這是刻意的取捨：本版的目的是量測姿態輸入在無補償下的實際行為。
+ *     skipped —— 對齊時被跳過的顆數，直接量化「使用者跟不上多少」
+ *     rewound —— 對齊時被拉回的顆數，量化「打太快多少」
+ *
+ *   由 setCursor 自行依差值累加，呼叫端不必記帳，也就不會漏記。
  */
 
 export function createSequencer({ chart }) {
@@ -36,7 +39,7 @@ export function createSequencer({ chart }) {
   /** 下一顆待發的 index */
   let cursor = 0;
 
-  const stats = { hits: 0, exhausted: 0 };
+  const stats = { hits: 0, exhausted: 0, skipped: 0, rewound: 0 };
 
   return {
     /**
@@ -67,7 +70,27 @@ export function createSequencer({ chart }) {
       };
     },
 
-    /** 預覽接下來 n 顆（供預覽帶）。 */
+    /**
+     * 直接指定游標位置（區塊對齊用）。
+     *
+     * ⚠ 本方法不得新增任何時間參數或時鐘讀取。
+     *   若日後發現「需要在這裡看一下時間」，代表判斷寫錯層了。
+     *
+     * @param {number} index 目標 index，會被 clamp 到 [0, L.length]
+     * @returns {number} 實際位移量（正 = 跳過，負 = 拉回，0 = 無變化）
+     */
+    setCursor(index) {
+      const target = Math.max(0, Math.min(L.length, Math.trunc(index)));
+      const delta = target - cursor;
+
+      if (delta > 0) stats.skipped += delta;
+      else if (delta < 0) stats.rewound += -delta;
+
+      cursor = target;
+      return delta;
+    },
+
+    /** 預覽接下來 n 顆。 */
     peek(n) {
       return L.slice(cursor, cursor + n);
     },
@@ -89,6 +112,8 @@ export function createSequencer({ chart }) {
       cursor = 0;
       stats.hits = 0;
       stats.exhausted = 0;
+      stats.skipped = 0;
+      stats.rewound = 0;
     },
   };
 }

@@ -15,7 +15,7 @@
  *
  * ⚠ 這不是 lookahead scheduler。只有 4 顆且全在 12 秒內，一次排完即可。
  *
- * ═══ 精度取捨（規格書 §9.4）═══
+ * ═══ 精度取捨 ═══
  *
  *   四顆之間的間距  → 由 AudioContext 保證，誤差 < 1 ms
  *   四顆對影片的位置 → 繼承一次 getCurrentTime() 的量化誤差（約一個影格）
@@ -23,10 +23,10 @@
  * 等距完美、整體平移一點點。使用者從四顆的間距學到速度，
  * 一個 20–40 ms 的共同平移不會破壞這件事。
  *
- * ═══ 相對於順序鼓 v3 的差異 ═══
+ * ═══ L1 改動 ═══
  *
- * 只改資料來源：video.currentTime → getTransport().getCurrentTime()。
- * 其餘邏輯一字不改。
+ * 只換發聲方法：audio.scheduleClick（合成正弦）→ audio.scheduleCue（取樣）。
+ * 時刻表計算、可行性判定、錨定原理、cancel() 全部一字不動。
  *
  * ⚠ 注入的是 getTransport 函式而非 transport 實例。
  *   原因：songSession 建立 cueTrack 的時機早於 transport 就緒，
@@ -45,12 +45,13 @@ export function createCueTrack({ chart, audio, getTransport }) {
    *   本譜第一顆 onset 在 ticks 7680 = 第 16 拍 = 第 5 小節第 1 拍，
    *   「往前推四個四分音符」的結果恰好等於「第 4 小節整小節」——
    *   用不著小節線邏輯就能得到正確答案。
+   *   （barGrid 有完整的小節線推導，但那是給區塊對齊用的，不是給這裡。）
    */
   const quarterMs = 60000 / chart.baseBpm;
   const firstOnsetMs = chart.onsetList[0].time;
 
   // 第 k 顆在第一顆 onset 之前 (CUE_COUNT - k + 1) 個四分音符處。
-  // k = 1 → 前 4 拍；k = CUE_COUNT → 前 1 拍。
+  // k = 1 → 前 4 拍（重音，倒數顯示「4」）；k = CUE_COUNT → 前 1 拍（顯示「1」）。
   // ⚠ 最後一顆必須在第一顆 onset 之「前」一整拍，不可與它同時。
   const cues = [];
   for (let k = 1; k <= TUNING.CUE_COUNT; k++) {
@@ -118,10 +119,11 @@ export function createCueTrack({ chart, audio, getTransport }) {
         // 一顆遲到的引導音會落在錯的拍點上，比不發更糟。
         if (when <= a0 + TUNING.CUE_SCHEDULE_GUARD_S) continue;
 
-        const ok = audio.scheduleClick(when, {
-          freq: c.accent ? TUNING.CUE_ACCENT_HZ : TUNING.CUE_NORMAL_HZ,
+        const ok = audio.scheduleCue(when, {
+          id: c.accent
+            ? TUNING.CUE_SAMPLE_ID_ACCENT
+            : TUNING.CUE_SAMPLE_ID_NORMAL,
           gain: c.accent ? TUNING.CUE_ACCENT_GAIN : TUNING.CUE_NORMAL_GAIN,
-          decayMs: TUNING.CUE_DECAY_MS,
         });
         if (ok) lastScheduled++;
       }

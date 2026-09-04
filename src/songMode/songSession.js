@@ -1,9 +1,9 @@
 /**
  * songMode/songSession.js
  *
- * 職責：歌曲模式的生命週期。
+ * 職責：歌曲模式的生命週期，以及 L1 的區塊對齊判斷。
  *
- * ═══ 狀態機（規格書 §7.1）═══
+ * ═══ 狀態機 ═══
  *
  *   IDLE ──選歌──> LOADING ──資產就緒──> ARMED ──姿態就緒──> PLAYING ──┐
  *     ^                                                                  │
@@ -21,16 +21,20 @@
  * if (state.calibrationProfile) 內，所以 profile 為 null 時歌曲模式
  * 會是「有影片有引導音，但打什麼都沒反應」—— 必須擋在播放之前。
  *
- * ═══ 游標歸零 ═══
+ * ═══ L1：區塊對齊 ═══
  *
- * sequencer 在 enter() 時重建，所以退出再重進即從第一顆開始。
- * 這就是本版不做「重置游標」按鈕的原因。
+ * syncBlock 是整個專案唯一決定「游標該跳到哪」的地方。
+ * 它必須維持兩個性質，缺一個都會出難查的 bug：
+ *
+ *   冪等   —— 同一區塊內呼叫任意次，結果相同、無副作用
+ *   單向   —— 只讀時間、只寫游標，不讀游標來決定要不要對齊
  */
 
 import { TUNING } from "./tuning.js";
 import { loadChart } from "./chartLoader.js";
 import { createSequencer } from "./sequencer.js";
 import { createCueTrack } from "./cueTrack.js";
+import { createBarGrid } from "./barGrid.js";
 import { createVideoAdapter } from "../transport/videoAdapter.js";
 
 export const SONG_PHASES = {
@@ -61,8 +65,17 @@ export function createSongSession({
   let chart = null;
   let sequencer = null;
   let cueTrack = null;
+  let barGrid = null;
   let currentSong = null;
   let armTimerId = null;
+
+  /**
+   * 上一次對齊到的區塊。
+   *
+   * ⚠ 這個變數就是冪等性的實作。null 代表「下一次呼叫必須重算」，
+   *   seek 之後必須設回 null。
+   */
+  let lastAlignedBlock = null;
 
   function clearArmTimer() {
     if (armTimerId !== null) {
@@ -83,6 +96,53 @@ export function createSongSession({
     getTransport()?.play();
   }
 
+  /**
+   * 區塊對齊。L1 的核心。
+   *
+   * 呼叫者有兩個，兩個都必須呼叫：
+   *   - main.js 的 hudLoop（每幀）
+   *   - hitRouter.route（每次打擊，消除 rAF 空窗的競態）
+   *
+   * @param {number} nowMs 影片時間（ms）。呼叫端已讀好，本方法不再讀時鐘。
+   * @returns {boolean} 是否真的發生了對齊（供呼叫端決定要不要重畫格線）
+   */
+  function syncBlock(nowMs) {
+    if (phase !== SONG_PHASES.PLAYING) return false;
+    if (!sequencer || !barGrid || !chart) return false;
+
+    // ⚠ 前奏期由 hitRouter 的前奏閘門負責，兩者不得同時作用。
+    //   這裡若不擋，前奏期間 hudLoop 會把游標對齊到第 0 塊，
+    //   而閘門又不讓打擊推進 —— 兩邊對「游標現在該在哪」的認知會分歧。
+    if (nowMs < getFirstOnsetMs()) return false;
+
+    // ⚠ 判定點提前 ALIGN_TOLERANCE_MS。
+    //   人的打擊散佈在小節線前後幾十毫秒，硬邊界會讓「提早打下的
+    //   小節重拍」被判為還在舊區塊，於是吃掉舊區塊剩餘的音符。
+    const blockIdx = barGrid.blockIndexAt(nowMs + TUNING.ALIGN_TOLERANCE_MS);
+
+    // 冪等的關鍵：同一區塊內直接返回
+    if (blockIdx === lastAlignedBlock) return false;
+
+    const blockStart = barGrid.blockStartMs(blockIdx);
+
+    // ⚠ 必須用 firstIndexAtOrAfter，不可用 nearestIndex。
+    //   後者在邊界上可能回傳「上一區塊的最後一顆」，
+    //   造成游標往回跳、剛打過的音再響一次。
+    const target = chart.firstIndexAtOrAfter(blockStart);
+
+    // 雙向硬對齊：target 小於當前游標時照樣執行（往回拉）。
+    // 打太快與打太慢同樣是偏離，只修一邊會讓超前時的格線繼續失真。
+    // 代價是超前時邊界處可能重播 1–2 顆，僅發生在跨小節線的瞬間。
+    sequencer.setCursor(target);
+
+    lastAlignedBlock = blockIdx;
+    return true;
+  }
+
+  function getFirstOnsetMs() {
+    return cueTrack?.getFirstOnsetMs() ?? Infinity;
+  }
+
   async function enter(song) {
     // 切歌：先完整退出，避免殘留 transport 與排程
     if (phase !== SONG_PHASES.IDLE) exit("switch");
@@ -100,8 +160,13 @@ export function createSongSession({
       sequencer = createSequencer({ chart });
       // ⚠ 傳 getTransport 函式而非實例 —— 此刻 transport 還沒建立
       cueTrack = createCueTrack({ chart, audio, getTransport });
+      barGrid = createBarGrid({ chart });
+      lastAlignedBlock = null;
 
       if (chart.warnings.length) notice(chart.warnings.join(" "));
+      if (barGrid.getWarnings().length) {
+        notice(barGrid.getWarnings().join(" "));
+      }
       if (!cueTrack.isFeasible()) {
         notice(
           `第一顆音符在 ${(cueTrack.getFirstOnsetMs() / 1000).toFixed(2)} 秒，` +
@@ -127,17 +192,25 @@ export function createSongSession({
         // ⚠ 必須取消。AudioContext 的時間軸不會因為影片暫停而停止，
         //   不取消的話暫停後引導音仍會照原定時刻響出來。
         audio.cancelScheduled();
+        // 暫停不需要碰 lastAlignedBlock —— 時間沒前進，blockIdx 不變，
+        // 冪等保證重複呼叫無副作用。
       });
       adapter.on("seeking", () => {
         audio.cancelScheduled();
+        // ⚠ 必須重置。不重置的話，seek 到別的區塊後
+        //   blockIdx 雖然變了但 lastAlignedBlock 仍是舊值 ——
+        //   雖然仍會觸發對齊，但若 seek 回同一區塊就不會重算，
+        //   而 seek 本身已經讓游標與時間脫節了。
+        lastAlignedBlock = null;
+        songUI.invalidateBlock();
       });
       adapter.on("ended", () => {
         exit("ended");
       });
 
       // ── 4. HUD 初始畫面 ──
-      songUI.renderCueBeats(cueTrack.getCues(), cueTrack.getQuarterMs());
-      songUI.renderRibbon(sequencer);
+      songUI.setCues(cueTrack.getCues(), cueTrack.getFirstOnsetMs());
+      songUI.invalidateBlock();
       songUI.updateCursor(0, sequencer.getTotal());
       songUI.showCuePhase();
 
@@ -178,7 +251,9 @@ export function createSongSession({
     chart = null;
     sequencer = null;
     cueTrack = null;
+    barGrid = null;
     currentSong = null;
+    lastAlignedBlock = null;
     phase = SONG_PHASES.IDLE;
 
     if (reason === "error") {
@@ -190,12 +265,14 @@ export function createSongSession({
     PHASES: SONG_PHASES,
     enter,
     exit,
+    syncBlock,
     getPhase: () => phase,
     getSequencer: () => sequencer,
     getCueTrack: () => cueTrack,
     getChart: () => chart,
+    getBarGrid: () => barGrid,
     getSong: () => currentSong,
-    getFirstOnsetMs: () => cueTrack?.getFirstOnsetMs() ?? Infinity,
+    getFirstOnsetMs,
     /** hitRouter 與主迴圈的唯一判斷依據 */
     isPlaying: () => phase === SONG_PHASES.PLAYING,
     isActive: () => phase !== SONG_PHASES.IDLE,
