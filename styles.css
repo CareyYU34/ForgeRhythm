@@ -52,43 +52,6 @@ body {
   min-height: 72px;
 }
 
-.hit-display {
-  order: 5;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: min(680px, calc(50vw - 180px));
-  margin-right: auto;
-  margin-left: 8px;
-  min-height: 24px;
-
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  overflow: hidden;
-}
-
-.hit-display.is-empty::before {
-  content: "";
-}
-
-.hit-text-item {
-  position: relative;
-  color: #fff;
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 0 1 auto;
-}
-
-.hit-text-item:not(:last-child)::after {
-  content: "\3001";
-  color: rgba(255, 255, 255, 0.65);
-  margin-left: 2px;
-}
-
 /* Sound */
 .sound-rack {
   position: absolute;
@@ -728,7 +691,7 @@ body {
    *   的絕對定位。那兩顆已改成流內項目，grid 反而會把四顆按鈕拆到不同列。
    *
    *   改為維持 flex 並允許換行：四顆按鈕留在第一列靠左，
-   *   .hit-display 與 .media-tools 各自佔滿一整列。
+   *   .media-tools 佔滿一整列。
    *
    *   下方 @media (max-width: 960px) 仍有 grid-column 宣告，
    *   在 flex 容器裡會被忽略，無副作用，故保留不動。
@@ -748,15 +711,6 @@ body {
     min-width: 0;
     align-self: stretch;
     align-items: stretch;
-  }
-
-  .hit-display {
-    flex: 1 1 100%;
-    min-width: 0;
-    max-width: none;
-    width: 100%;
-    margin-left: 0;
-    margin-right: 0;
   }
 
   .midi-library-row {
@@ -807,13 +761,8 @@ body {
   }
 
   .settings-wrap,
-  .hit-display,
   .media-tools {
     grid-column: 1 / -1;
-  }
-
-  .hit-display {
-    min-height: auto;
   }
 
   .midi-library-row {
@@ -888,11 +837,6 @@ body {
     justify-self: stretch;
   }
 
-  .hit-display {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
   .sound-rack {
     position: static;
     height: auto;
@@ -911,10 +855,6 @@ body {
 
   .settings-panel .sound-rack {
     grid-template-columns: 1fr;
-  }
-
-  .hit-text-item {
-    font-size: 16px;
   }
 
   .settings-control-row {

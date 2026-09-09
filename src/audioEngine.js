@@ -67,6 +67,25 @@ export const MIDI_TO_SOUND_ID = {
   42: "hihat",
 };
 
+/**
+ * 歌曲模式「部位配對」：哪些鼓聲要求用膝蓋（heel）觸發。
+ *
+ * 大鼓（kick）刻意限膝蓋，其餘（snare / hihat）限手部（front）——
+ * 讓身體打擊與鼓組在物理上對應，而不是「打哪裡都推進下一顆」。
+ *
+ * ⚠ 這是「膝蓋 → kick」對應的唯一來源，與 zoneSound 的自由模式對應無關。
+ *   若日後想讓別的音也限膝蓋，只需在這裡加 id。
+ */
+export const KNEE_SOUND_IDS = new Set(["kick"]);
+
+/**
+ * 某個 MIDI 音高在部位配對下是否要求用膝蓋觸發。
+ * 查不到對應鼓聲（不在 MIDI_TO_SOUND_ID）時視為「不要求膝蓋」。
+ */
+export function midiRequiresKnee(midi) {
+  return KNEE_SOUND_IDS.has(MIDI_TO_SOUND_ID[midi]);
+}
+
 export function createDefaultZoneSound() {
   const zoneSound = {};
   for (const side of ["left", "right"]) {

@@ -195,6 +195,15 @@ export function createSongSession({
         // 暫停不需要碰 lastAlignedBlock —— 時間沒前進，blockIdx 不變，
         // 冪等保證重複呼叫無副作用。
       });
+      adapter.on("ratechange", () => {
+        // 倍速改變時，前奏 count-in 已排出的引導音會用舊 rate 換算，
+        // 位置整體偏移 —— 重新錨定即可（anchor 先 cancelScheduled，
+        // 且已過期的 cue 會被 guard 丟棄，播放中途變速等同 no-op）。
+        // 只有播放中才有已排程的引導音，暫停 / ARMED 期間不需處理。
+        if (phase === SONG_PHASES.PLAYING && getTransport()?.isPlaying()) {
+          cueTrack?.anchor();
+        }
+      });
       adapter.on("seeking", () => {
         audio.cancelScheduled();
         // ⚠ 必須重置。不重置的話，seek 到別的區塊後

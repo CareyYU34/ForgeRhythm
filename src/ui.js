@@ -1,40 +1,3 @@
-const HIT_LABELS = {
-  left_front: "左腿正面",
-  left_heel: "左腳跟",
-  right_front: "右腿正面",
-  right_heel: "右腳跟",
-};
-
-function createHitText(hit) {
-  const text = document.createElement("span");
-  text.className = "hit-text-item";
-  text.textContent = hit.label;
-  return text;
-}
-
-export function getHitLabel(side, zoneId) {
-  return HIT_LABELS[`${side}_${zoneId}`] ?? `${side}_${zoneId}`;
-}
-
-export function initHitDisplay(container, maxItems = 3) {
-  if (!container) {
-    return { replaceHits() {} };
-  }
-
-  function render(hits) {
-    container.replaceChildren(...hits.map(createHitText));
-    container.classList.toggle("is-empty", hits.length === 0);
-  }
-
-  function replaceHits(hits) {
-    const nextHits = Array.isArray(hits) ? hits.slice(0, maxItems) : [];
-    render(nextHits);
-  }
-
-  render([]);
-  return { replaceHits };
-}
-
 export function bindCameraToggle({
   button,
   state,
@@ -238,10 +201,12 @@ export function initSettingsPanel({
   panelEl,
   outputGain,
   visibilityThreshold,
+  strictLimbMatch,
   drawPoseDebugEnabled,
   showPFOverlay,
   onOutputGainChange,
   onVisibilityThresholdChange,
+  onStrictLimbMatchChange,
   onDrawPoseDebugChange,
   onShowPFOverlayChange,
 }) {
@@ -278,6 +243,15 @@ export function initSettingsPanel({
         toDisplay: (internal) => internal * 100,
         toInternal: (display) => Number((display / 100).toFixed(4)),
         onChange: onVisibilityThresholdChange,
+      }),
+    );
+
+    // 歌曲模式：大鼓限膝蓋、其餘限手部。關閉 = 任何部位都推進下一顆（舊行為）。
+    controlsEl.appendChild(
+      createToggleControl({
+        label: "大鼓限膝蓋（歌曲模式）",
+        value: strictLimbMatch,
+        onChange: onStrictLimbMatchChange,
       }),
     );
   }

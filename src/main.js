@@ -1,6 +1,4 @@
 import {
-  getHitLabel,
-  initHitDisplay,
   bindCameraToggle,
   bindSoundUI,
   initSettingsPanel,
@@ -48,7 +46,6 @@ const frameEl = document.querySelector(".camera-frame");
 const rackEl = document.getElementById("soundRack");
 const settingsToggle = document.getElementById("settingsToggle");
 const settingsPanel = document.getElementById("settingsPanel");
-const hitDisplayEl = document.getElementById("hitDisplay");
 const calibrateBtn = document.getElementById("calibrateBtn");
 
 // ── 校準 Overlay 元素 ──
@@ -163,6 +160,9 @@ const state = {
   stream: null,
   poseLandmarker: null,
   outputGain: 7, // 預設輸出音量，範圍 0-10，對應 audio engine 中 0-1 的增益值
+  // 歌曲模式「部位配對」：大鼓限膝蓋、其餘限手部。預設開啟；
+  // 關閉即回到「任何部位都推進下一顆」的舊行為。僅影響歌曲模式。
+  strictLimbMatch: true,
   ...createInitialPoseState(), // 包含 poseLoop 需要的初始狀態
 };
 
@@ -174,7 +174,6 @@ const zoneSound = createDefaultZoneSound();
 const audioEngine = createAudioEngine(SOUND_LIBRARY);
 const { initAudio, playZone, setOutputVolume } = audioEngine;
 
-const { replaceHits } = initHitDisplay(hitDisplayEl, 1);
 setOutputVolume(state.outputGain);
 
 // ⚠ 引導音走獨立匯流排，與 outputGain 完全脫鉤。
@@ -213,6 +212,8 @@ const hitRouter = createHitRouter({
   freePlayZone: playZone, // 自由模式仍走原本的 zoneSound 查表
   songUI,
   getTransport: getActiveTransport,
+  // 讀取當下設定（開關可在遊玩中切換，故用 getter 而非快照）
+  getStrictMatch: () => state.strictLimbMatch,
 });
 
 const predictWebcam = createPredictWebcam({
@@ -226,16 +227,6 @@ const predictWebcam = createPredictWebcam({
   //   簽章與 playZone 完全一致，因此 poseEngine/ 一行都不用改。
   playZone: hitRouter.route,
   zoneSound,
-  onHit: (hits) => {
-    replaceHits(
-      (hits ?? []).map(({ side, zoneId, source }) => ({
-        side,
-        zoneId,
-        source,
-        label: getHitLabel(side, zoneId),
-      })),
-    );
-  },
   // 每幀 pose callback 裡會呼叫這個，把 landmarks 餵給校準引擎與監控引擎
   onFrame: (poseLandmarks, nowMs) => {
     calibration.feedFrame(poseLandmarks, nowMs);
@@ -270,14 +261,19 @@ const predictWebcam = createPredictWebcam({
   },
 });
 
-const startCam = () =>
-  startWebcam({
+const startCam = () => {
+  // ⚠ 每次開鏡頭都重啟監控引擎，語意等同「重新開網頁」：
+  //   start() 內部會 initTrackers() 重置追蹤器並重建冷啟動 / 可見度定時器。
+  //   與 stopCam 的 monitor.stop() 對稱，避免關鏡頭後兩個定時器停擺。
+  monitor.start();
+  return startWebcam({
     video,
     state,
     startPredictLoop: predictWebcam,
     syncCanvas,
     initAudio,
   });
+};
 
 const stopCam = () => {
   // ⚠ 關鏡頭 = 沒有觸發源，歌曲模式必須一併退出，
@@ -365,11 +361,15 @@ async function bootstrap() {
     panelEl: settingsPanel,
     outputGain: state.outputGain,
     visibilityThreshold: state.visibilityThreshold,
+    strictLimbMatch: state.strictLimbMatch,
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
     showPFOverlay: state.showPFOverlay,
     onOutputGainChange: (value) => {
       state.outputGain = value;
       setOutputVolume(value);
+    },
+    onStrictLimbMatchChange: (value) => {
+      state.strictLimbMatch = value;
     },
     onVisibilityThresholdChange: (value) => {
       state.visibilityThreshold = value;
@@ -392,9 +392,7 @@ async function bootstrap() {
 
   button.textContent = "關閉鏡頭";
 
-  // ── 啟動監控引擎 ──
-  monitor.start();
-
+  // ── 啟動鏡頭（startCam 內部會啟動監控引擎）──
   await startCam();
 
   // ── HUD 迴圈 ──

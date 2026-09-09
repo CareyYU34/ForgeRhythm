@@ -288,10 +288,15 @@ export function setActiveTransport(transport) {
   const seekBar = document.getElementById("seekBar");
   const volumeSlider = document.getElementById("volumeSlider");
 
-  // 變速：本機影片第一版鎖 1.0x
+  // 變速：本機影片與 YT 皆支援。切換播放器時把 UI 上的倍速推給新 transport
+  //（跨播放器保留使用者設定，與下方音量同理）。
   if (speedEl) {
     speedEl.disabled = !transport?.supportsRate;
-    if (transport && !transport.supportsRate) speedEl.value = "1";
+    if (transport && !transport.supportsRate) {
+      speedEl.value = "1";
+    } else if (transport?.supportsRate) {
+      transport.setPlaybackRate(parseFloat(speedEl.value) || 1);
+    }
   }
 
   if (!transport) {

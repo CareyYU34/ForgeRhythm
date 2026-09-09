@@ -112,8 +112,15 @@ export function createCueTrack({ chart, audio, getTransport }) {
       const a0 = audio.now();
       const t0 = transport.getCurrentTime() * 1000;
 
+      // ⚠ 倍速換算：cues 的 c.t 是「媒體時間」。在 r 倍速下，媒體時間差
+      //   (c.t - t0) 只佔 (c.t - t0) / r 的牆鐘時間，而 AudioContext 走的
+      //   是牆鐘。少除這個 r，引導音會在高倍速時晚響、低倍速時早響。
+      //   變速發生在 count-in 期間時，songSession 會收到 "ratechange" 並
+      //   重新呼叫 anchor()，重讀一次 rate。
+      const rate = transport.getPlaybackRate?.() || 1;
+
       for (const c of list) {
-        const when = a0 + (c.t - t0) / 1000;
+        const when = a0 + (c.t - t0) / 1000 / rate;
 
         // 過期或落在保護帶內 → 丟棄，不補發。
         // 一顆遲到的引導音會落在錯的拍點上，比不發更糟。

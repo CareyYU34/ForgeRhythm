@@ -7,7 +7,7 @@
  *
  *   kind / play / pause / isPlaying / getCurrentTime / getDuration /
  *   seekTo / setVolume / getVolume / mute / unMute / isMuted /
- *   setPlaybackRate / supportsRate / destroy / on
+ *   setPlaybackRate / getPlaybackRate / supportsRate / destroy / on
  *
  *   額外提供 load(url) —— songSession 需要等 loadedmetadata 才能建立版面。
  *
@@ -17,9 +17,14 @@
  *    play 只代表「呼叫了播放」，playing 才是播放真正開始的時刻，
  *    也自然涵蓋 seek 後恢復與緩衝回復。引導音的錨定必須綁在後者。
  *
- * 2. supportsRate = false。
- *    第一版鎖 1.0x —— 變速會讓 cueTrack 的 (c.t - t0) / 1000 換算失效，
- *    必須除以 playbackRate。留給 L5。
+ * 2. supportsRate = true（變速已支援）。
+ *    對齊本身不受倍速影響 —— getCurrentTime() 回傳的是「媒體時間」
+ *    （video.currentTime），譜面 onset、syncBlock、barGrid、HUD 全在
+ *    同一條媒體時間軸上比較，倍速只改變它前進的快慢，不改變刻度。
+ *    唯一需要換算的是 cueTrack 把「媒體時間差」排到 AudioContext 牆鐘
+ *    的那一步：媒體時間差 Δ 在 r 倍速下只佔 Δ / r 的牆鐘時間，
+ *    故 cueTrack.anchor() 會除以 getPlaybackRate()。
+ *    "ratechange" 事件讓 songSession 在前奏 count-in 期間變速時重新錨定。
  */
 
 export function createVideoAdapter({ videoEl }) {
@@ -51,10 +56,11 @@ export function createVideoAdapter({ videoEl }) {
   bindNative("pause", () => emit("pause"));
   bindNative("seeking", () => emit("seeking"));
   bindNative("ended", () => emit("ended"));
+  bindNative("ratechange", () => emit("ratechange"));
 
   return {
     kind: "local",
-    supportsRate: false,
+    supportsRate: true,
 
     /**
      * 設定來源並等到 metadata 就緒。
@@ -139,8 +145,23 @@ export function createVideoAdapter({ videoEl }) {
       return destroyed ? false : videoEl.muted;
     },
 
-    /** 第一版鎖 1.0x，本方法刻意為空實作 */
-    setPlaybackRate() {},
+    /**
+     * 設定播放倍速。
+     *
+     * ⚠ 同時寫 defaultPlaybackRate —— 否則之後任何 load()／換 src
+     *   都會把 playbackRate 重置回 1.0，使用者選的倍速會無聲無息失效。
+     */
+    setPlaybackRate(r) {
+      if (destroyed) return;
+      const rate = Number(r);
+      if (!Number.isFinite(rate) || rate <= 0) return;
+      videoEl.defaultPlaybackRate = rate;
+      videoEl.playbackRate = rate;
+    },
+
+    getPlaybackRate() {
+      return destroyed ? 1 : videoEl.playbackRate;
+    },
 
     destroy() {
       if (destroyed) return;

@@ -75,6 +75,10 @@ export function createYtAdapter({ hostEl, videoId }) {
         else if (e.data === YT.PlayerState.PAUSED) emit("pause");
         else if (e.data === YT.PlayerState.ENDED) emit("ended");
       },
+      // 變速：讓 songSession 在前奏 count-in 期間變速時重新錨定引導音
+      onPlaybackRateChange: () => {
+        if (!destroyed) emit("ratechange");
+      },
     },
   });
 
@@ -144,6 +148,10 @@ export function createYtAdapter({ hostEl, videoId }) {
 
     setPlaybackRate(r) {
       if (alive()) player.setPlaybackRate(r);
+    },
+
+    getPlaybackRate() {
+      return alive() ? player.getPlaybackRate() : 1;
     },
 
     destroy() {

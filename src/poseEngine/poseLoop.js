@@ -421,7 +421,6 @@ export function createPredictWebcam({
   getPoseLandmarker,
   playZone,
   zoneSound,
-  onHit,
   onFrame,
   hitEffectManager,
 }) {
@@ -444,7 +443,6 @@ export function createPredictWebcam({
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (result.landmarks.length === 0) return;
-        const frameHits = [];
 
         // 先解出這一幀會用到的關鍵點，後面手部與膝蓋都共用這批資料。
         const poseLandmarks = result.landmarks[0];
@@ -668,7 +666,6 @@ export function createPredictWebcam({
         // 手部命中：觸發區固定為大腿正面。
         if (state.leftState.didHit) {
           playZone("left", HAND_ZONE, zoneSound);
-          frameHits.push({ side: "left", zoneId: HAND_ZONE, source: "hand" });
           if (zoneSound[`left_${HAND_ZONE}`] !== "none") {
             _fx.pushHandHit({
               side: "left",
@@ -684,7 +681,6 @@ export function createPredictWebcam({
 
         if (state.rightState.didHit) {
           playZone("right", HAND_ZONE, zoneSound);
-          frameHits.push({ side: "right", zoneId: HAND_ZONE, source: "hand" });
           if (zoneSound[`right_${HAND_ZONE}`] !== "none") {
             _fx.pushHandHit({
               side: "right",
@@ -700,11 +696,6 @@ export function createPredictWebcam({
 
         if (state.leftKneeState.didHit) {
           playZone("left", state.leftKneeState.zoneId, zoneSound);
-          frameHits.push({
-            side: "left",
-            zoneId: state.leftKneeState.zoneId,
-            source: "knee",
-          });
           if (zoneSound[`left_${state.leftKneeState.zoneId}`] !== "none") {
             _fx.pushKneeHit({
               side: "left",
@@ -717,11 +708,6 @@ export function createPredictWebcam({
 
         if (state.rightKneeState.didHit) {
           playZone("right", state.rightKneeState.zoneId, zoneSound);
-          frameHits.push({
-            side: "right",
-            zoneId: state.rightKneeState.zoneId,
-            source: "knee",
-          });
           if (zoneSound[`right_${state.rightKneeState.zoneId}`] !== "none") {
             _fx.pushKneeHit({
               side: "right",
@@ -730,10 +716,6 @@ export function createPredictWebcam({
               getVideoDrawRect,
             });
           }
-        }
-
-        if (frameHits.length > 0) {
-          onHit?.(frameHits);
         }
 
         _fx.draw(canvasCtx, webTimeMs);
