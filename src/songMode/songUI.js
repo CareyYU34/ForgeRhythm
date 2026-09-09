@@ -15,7 +15,7 @@
  *
  * ═══ 訊號源 ═══
  *
- *   1. HUD 的燈號（剛剛發出的音）
+ *   格線上的 next（下一顆待打）是主要的視覺訊號。
  *
  * 另一個訊號源（游標 `102 / 487`）在 L1 之後預設隱藏，
  * 由 TUNING.SHOW_DEBUG_CURSOR 控制。區塊對齊出問題時把它打開 ——
@@ -33,13 +33,21 @@
  */
 
 import { TUNING } from "./tuning.js";
+import { midiRequiresKnee } from "../audioEngine.js";
 
-/** MIDI → 顯示用短標籤。與 styles 的 data-midi 配色對應。 */
-const DRUM_SHORT = {
-  36: "K",
-  38: "S",
-  42: "H",
-};
+/**
+ * MIDI → 觸發部位的 Font Awesome 圖示。
+ *
+ * 顯示的是「這一顆要用手還是腳打」，而非鼓種：
+ *   kick（大鼓）用腳、其餘（snare / hihat）用手 ——
+ *   與 audioEngine.midiRequiresKnee 同源，也對應歌曲模式的部位配對。
+ *
+ * 回傳的是 icon class；節點另需加上 fas（用法同專案其他 <i class="fas ...">）。
+ * 配色仍走 data-midi（見 styles 的 .song-note[data-midi]）。
+ */
+function limbIconClass(midi) {
+  return midiRequiresKnee(midi) ? "fa-shoe-prints" : "fa-hand";
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -67,7 +75,6 @@ export function createSongUI() {
     blockHead: $("songBlockHead"),
     blockRest: $("songBlockRest"),
 
-    lamp: $("songLamp"),
     cursorFill: $("songCursorFill"),
     cursorText: $("songCursorText"),
     cursorWrap: $("songCursorWrap"),
@@ -385,7 +392,9 @@ export function createSongUI() {
         node.dataset.index = String(i);
         node.dataset.state = "pending";
         node.style.left = `${((o.time - startMs) / spanMs) * 100}%`;
-        node.textContent = DRUM_SHORT[o.midi] ?? "?";
+        // 手 / 腳 圖示取代原本的字母（K/S/H）。glyph 走 ::before，
+        // 沿用 .song-note 的 color: transparent 機制隱藏 pending 顆。
+        node.classList.add("fas", limbIconClass(o.midi));
         noteFrag.appendChild(node);
         blockNoteNodes.push(node);
       }
@@ -459,21 +468,8 @@ export function createSongUI() {
       }
     },
 
-    /** 燈號 = 剛剛發出的那一顆 */
-    updateLamp(res) {
-      if (!el.lamp) return;
-      if (!res || res.exhausted || res.midi === null) {
-        el.lamp.dataset.midi = "";
-        el.lamp.textContent = "—";
-        return;
-      }
-      el.lamp.dataset.midi = String(res.midi);
-      el.lamp.textContent = DRUM_SHORT[res.midi] ?? "?";
-    },
-
     /** hitRouter 每次派發後呼叫 */
     onHitResult(res, sequencer) {
-      this.updateLamp(res);
       this.updateBlockStates(sequencer);
       this.updateCursor(sequencer.getCursor(), sequencer.getTotal());
     },

@@ -1,7 +1,7 @@
 /**
  * songMode/barGrid.js — L1 新增
  *
- * 職責：把譜面的 ticks / ppq / timeSignatures 轉成「兩小節區塊」的時間格線。
+ * 職責：把譜面的 ticks / ppq / timeSignatures 轉成「區塊（BLOCK_BARS 小節）」的時間格線。
  * 狀態：建構時算完，之後全部是純函式查詢。
  *
  * ═══ 為什麼不放進 chartLoader ═══

@@ -1085,27 +1085,24 @@ body {
    *
    * ⚠ 調整格線大小只改這裡，不要去下面的規則裡改死值。
    *
-   *   980px 的區塊在八分音符密度下每格 61.25px。next 是 64px ——
-   *   它會壓過左右鄰居各約 1.4px，這是刻意的：配合 z-index 分層後
-   *   讀起來是「浮起的那一顆」而非「撞在一起」。不要縮到 60px 去避開。
+   *   單小節循環後一次只顯示一小節，音符變少、橫向更寬鬆，
+   *   因此整體放大讓站著離螢幕的使用者看得更清楚：
+   *   區塊加高、音符與燈號加大、字級（圖示大小）同步上調。
    */
-  --song-block-w: min(88%, 980px);
-  --song-block-h: 88px;
+  --song-block-w: min(92%, 1040px);
+  --song-block-h: 132px;
 
   /* 所有音符的實體尺寸統一為 base，四個階級靠 transform scale 表現。
      見下方 .song-note 的說明。 */
-  --song-note-base: 64px;
+  --song-note-base: 96px;
   --song-note-scale-next: 1;
   --song-note-scale-soon: 0.5;
   --song-note-scale-pending: 0.3125;
   --song-note-scale-done: 0.25;
 
-  /* 字級同樣會被 scale 縮小，這裡填的是 scale 前的值。 */
-  --song-font-next: 34px;
-  --song-font-soon: 32px;
-
-  --song-lamp-size: 56px;
-  --song-lamp-font: 26px;
+  /* 字級（現為手 / 腳圖示大小）同樣會被 scale 縮小，填的是 scale 前的值。 */
+  --song-font-next: 50px;
+  --song-font-soon: 46px;
 }
 
 /* ══ 歌曲清單（topbar）══════════════════════════════════════════════════ */
@@ -1453,11 +1450,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--song-mono);
+  /* 圖示以 Font Awesome 的 ::before 呈現，字體由 .fas 提供，
+     此處不再指定 font-family（原本的 --song-mono 是給字母用的）。 */
   font-style: normal;
   font-size: var(--song-font-next);
-  /* pending 是無字色塊。字要靠 transparent 藏，不能只靠縮小 ——
-     scale 0.3125 之後 34px 的字仍有約 10px，會在色塊上留下字影。 */
+  /* pending 是無字色塊。圖示要靠 transparent 藏，不能只靠縮小 ——
+     scale 0.3125 之後仍會在色塊上留下殘影。 */
   color: transparent;
   transform: translate(-50%, -50%) scale(var(--song-note-scale-pending));
   transition:
@@ -1485,7 +1483,7 @@ body {
 }
 
 /* soon = next 之後的 N 顆（TUNING.NOTE_SOON_COUNT）。
-   保留字母供預讀 —— 使用者需要知道下一顆之後是手還是腳。 */
+   保留圖示供預讀 —— 使用者需要知道下一顆之後是手還是腳。 */
 .song-note[data-state="soon"] {
   z-index: 2;
   transform: translate(-50%, -50%) scale(var(--song-note-scale-soon));
@@ -1545,37 +1543,6 @@ body {
   font-size: 18px;
   letter-spacing: 0.3em;
   color: rgba(255, 255, 255, 0.35);
-}
-
-/* 燈號 = 剛剛發出的那一顆。與格線上的 next 對照即可驗證派發是否正確。 */
-.song-lamp {
-  flex: 0 0 auto;
-  width: var(--song-lamp-size);
-  height: var(--song-lamp-size);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--song-mono);
-  font-size: var(--song-lamp-font);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.4);
-}
-.song-lamp[data-midi="36"] {
-  color: var(--song-ink);
-  background: var(--song-kick);
-  border-color: var(--song-kick);
-}
-.song-lamp[data-midi="38"] {
-  color: var(--song-ink);
-  background: var(--song-snare);
-  border-color: var(--song-snare);
-}
-.song-lamp[data-midi="42"] {
-  color: var(--song-ink);
-  background: var(--song-hat);
-  border-color: var(--song-hat);
 }
 
 /* ── 游標（除錯用，預設隱藏）── */

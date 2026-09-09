@@ -319,19 +319,27 @@ function hudLoop() {
   // 倒數自行依時間決定顯示 / 隱藏 / 「開始」，不受階段切換控制
   songUI.updateCountdown(tMs);
 
-  if (tMs < songSession.getFirstOnsetMs()) {
-    songUI.showCuePhase();
-    return;
-  }
-
-  songUI.showRibbonPhase();
-
   const barGrid = songSession.getBarGrid();
   const chart = songSession.getChart();
   const sequencer = songSession.getSequencer();
   if (!barGrid || !chart || !sequencer) return;
 
-  const blockIdx = barGrid.blockIndexAt(tMs + TUNING.BLOCK_FLIP_LEAD_MS);
+  // ── 鼓面在播放一開始就出現 ──────────────────────────────────────────────
+  //
+  // 前奏 count-in 期間也顯示格線（先擺出第一小節），但「不跑」：
+  //   - syncBlock 在第一顆 onset 前一律返回 false → 游標不推進、不對齊
+  //   - 打擊被 hitRouter 的前奏閘門擋住 → 不吃掉譜面
+  //   - updateBlockHead 的指針百分比夾限在 [0,100] → 停在最左，
+  //     直到播放時間真正進入該小節才開始移動
+  // 這樣「鼓面先出現、等對的時間才正常跑」兩件事同時成立。
+  songUI.showRibbonPhase();
+
+  const firstOnsetMs = songSession.getFirstOnsetMs();
+  const blockIdx =
+    tMs < firstOnsetMs
+      ? barGrid.blockIndexAt(firstOnsetMs) // 前奏期固定先顯示第一小節
+      : barGrid.blockIndexAt(tMs + TUNING.BLOCK_FLIP_LEAD_MS);
+
   songUI.ensureBlock({ chart, barGrid, blockIdx, sequencer });
   songUI.updateBlockHead(tMs, barGrid, blockIdx);
 }
