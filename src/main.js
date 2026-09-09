@@ -163,6 +163,10 @@ const state = {
   // 歌曲模式「部位配對」：大鼓限膝蓋、其餘限手部。預設開啟；
   // 關閉即回到「任何部位都推進下一顆」的舊行為。僅影響歌曲模式。
   strictLimbMatch: true,
+  // 歌曲模式難度：「basic」預設（四分，只吃四分位置音符）／
+  // 「advanced」進階（八分，吃全部音符）。於載入譜面時套用，
+  // 播放中切換需重新選歌才生效。
+  songDifficulty: "basic",
   ...createInitialPoseState(), // 包含 poseLoop 需要的初始狀態
 };
 
@@ -370,6 +374,7 @@ async function bootstrap() {
     outputGain: state.outputGain,
     visibilityThreshold: state.visibilityThreshold,
     strictLimbMatch: state.strictLimbMatch,
+    advancedDifficulty: state.songDifficulty === "advanced",
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
     showPFOverlay: state.showPFOverlay,
     onOutputGainChange: (value) => {
@@ -378,6 +383,10 @@ async function bootstrap() {
     },
     onStrictLimbMatchChange: (value) => {
       state.strictLimbMatch = value;
+    },
+    // 難度切換於「下次載入譜面」時生效（重新選歌）。
+    onAdvancedDifficultyChange: (value) => {
+      state.songDifficulty = value ? "advanced" : "basic";
     },
     onVisibilityThresholdChange: (value) => {
       state.visibilityThreshold = value;

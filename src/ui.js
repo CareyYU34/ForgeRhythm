@@ -202,11 +202,13 @@ export function initSettingsPanel({
   outputGain,
   visibilityThreshold,
   strictLimbMatch,
+  advancedDifficulty,
   drawPoseDebugEnabled,
   showPFOverlay,
   onOutputGainChange,
   onVisibilityThresholdChange,
   onStrictLimbMatchChange,
+  onAdvancedDifficultyChange,
   onDrawPoseDebugChange,
   onShowPFOverlayChange,
 }) {
@@ -252,6 +254,16 @@ export function initSettingsPanel({
         label: "大鼓限膝蓋（歌曲模式）",
         value: strictLimbMatch,
         onChange: onStrictLimbMatchChange,
+      }),
+    );
+
+    // 歌曲模式難度：關閉 = 預設（四分，只吃四分位置音符）；
+    // 開啟 = 進階（八分，吃全部音符）。於下次載入譜面（重新選歌）時生效。
+    controlsEl.appendChild(
+      createToggleControl({
+        label: "進階難度（八分音符）",
+        value: advancedDifficulty,
+        onChange: onAdvancedDifficultyChange,
       }),
     );
   }

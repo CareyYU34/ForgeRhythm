@@ -39,28 +39,119 @@ export function createCueTrack({ chart, audio, getTransport }) {
   /**
    * 引導音時刻表（music time，ms）。
    *
-   * 規則：從第一顆 onset 往前推 CUE_COUNT 個四分音符。
+   * 規則：把「第一小節四拍的節奏」原樣往前搬一個小節，當作 count-in。
    *
-   * ⚠ 刻意不使用 ppq / timeSignature 做小節線計算。
-   *   本譜第一顆 onset 在 ticks 7680 = 第 16 拍 = 第 5 小節第 1 拍，
-   *   「往前推四個四分音符」的結果恰好等於「第 4 小節整小節」——
-   *   用不著小節線邏輯就能得到正確答案。
+   * ═══ 為什麼不再用 baseBpm 等距 ═══
+   *
+   * baseBpm 是 MIDI 匯出的名目速度（本譜 77.9999），據此算出的四拍是
+   * 完美等距。但譜面若經人工與影片對齊（狀況 A），真實拍點會微幅偏離
+   * 名目 BPM 格線 —— 此時等距的引導音會與影片的真實節奏產生落差。
+   *
+   * 改法：直接讀 JSON 已合併過的 ticks↔time，插值出第一小節每一拍的
+   * 真實時間，以及該小節的真實長度，再整組平移一個小節放到開始前。
+   *
+   * ⚠ 退化性：資料落在整齊 BPM 格線上時（如本譜現況），本法算出的
+   *   結果與舊的 baseBpm 等距完全相同 —— 這是設計目標，不是巧合。
+   *
+   * ⚠ 需要 ppq + 每顆 onset 的 ticks 才能定位「小節四分格」。任一缺失
+   *   或無法插值時，退回 buildCuesFromBpm（與 L1 之前一字不差）。
    *   （barGrid 有完整的小節線推導，但那是給區塊對齊用的，不是給這裡。）
    */
   const quarterMs = 60000 / chart.baseBpm;
-  const firstOnsetMs = chart.onsetList[0].time;
+  const firstOnset = chart.onsetList[0];
+  const firstOnsetMs = firstOnset.time;
 
-  // 第 k 顆在第一顆 onset 之前 (CUE_COUNT - k + 1) 個四分音符處。
-  // k = 1 → 前 4 拍（重音，倒數顯示「4」）；k = CUE_COUNT → 前 1 拍（顯示「1」）。
-  // ⚠ 最後一顆必須在第一顆 onset 之「前」一整拍，不可與它同時。
-  const cues = [];
-  for (let k = 1; k <= TUNING.CUE_COUNT; k++) {
-    cues.push({
-      t: firstOnsetMs - (TUNING.CUE_COUNT - k + 1) * quarterMs,
-      accent: k === 1,
-      beat: k,
-    });
+  /**
+   * ticks → 真實時間（ms）的分段線性插值。
+   *
+   * 資料點取自 onsetList（已與影片合併，time 為真實媒體時間）。
+   * 只在 [firstTick, firstTick + CUE_COUNT*ppq] 範圍內查詢 —— 全部落在
+   * 第一顆 onset 之後、被實際音符夾住的區段，不需外插進無音符的前奏。
+   *
+   * @returns {number|null} 資料不足以插值時回傳 null（觸發 baseBpm 退化）
+   */
+  const tickPts = chart.onsetList
+    .filter((n) => Number.isFinite(n.ticks))
+    .map((n) => ({ tick: n.ticks, time: n.time }));
+
+  function timeAtTick(tick) {
+    const P = tickPts;
+    if (P.length < 2) return null;
+
+    // lower bound：第一個 tick >= 目標的資料點
+    let lo = 0;
+    let hi = P.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (P[mid].tick < tick) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo < P.length && P[lo].tick === tick) return P[lo].time;
+
+    // 取夾住目標的兩點做線性插值；落在端點外時以最近兩點的斜率外插
+    let a;
+    let b;
+    if (lo === 0) {
+      a = P[0];
+      b = P[1];
+    } else if (lo >= P.length) {
+      a = P[P.length - 2];
+      b = P[P.length - 1];
+    } else {
+      a = P[lo - 1];
+      b = P[lo];
+    }
+    if (b.tick === a.tick) return a.time;
+    const r = (tick - a.tick) / (b.tick - a.tick);
+    return a.time + r * (b.time - a.time);
   }
+
+  /**
+   * 讀真實拍點：第 k 顆對應第一小節第 k 拍（tick = firstTick + (k-1)*ppq），
+   * 整組往前平移「第一小節的真實長度」放到開始前一小節。
+   *
+   * beat / accent 語意與舊版一致：
+   *   k = 1 → 前 4 拍（重音，倒數顯示「4」）；k = CUE_COUNT → 前 1 拍（顯示「1」）。
+   * ⚠ 最後一顆恰好落在第一顆 onset 之「前」一整拍，不會與它同時。
+   */
+  function buildCuesFromTicks() {
+    const ppq = chart.ppq;
+    const firstTick = firstOnset.ticks;
+    if (!Number.isFinite(ppq) || !Number.isFinite(firstTick)) return null;
+
+    const beatTimes = [];
+    for (let k = 1; k <= TUNING.CUE_COUNT; k++) {
+      const t = timeAtTick(firstTick + (k - 1) * ppq);
+      if (t === null) return null;
+      beatTimes.push(t);
+    }
+
+    // 第一小節的真實長度 = 整組引導音往前平移的量
+    const barEnd = timeAtTick(firstTick + TUNING.CUE_COUNT * ppq);
+    if (barEnd === null) return null;
+    const barDurationMs = barEnd - firstOnsetMs;
+
+    return beatTimes.map((bt, i) => ({
+      t: bt - barDurationMs,
+      accent: i === 0,
+      beat: i + 1,
+    }));
+  }
+
+  /** baseBpm 等距退化路徑（與 L1 之前完全相同）。 */
+  function buildCuesFromBpm() {
+    const cues = [];
+    for (let k = 1; k <= TUNING.CUE_COUNT; k++) {
+      cues.push({
+        t: firstOnsetMs - (TUNING.CUE_COUNT - k + 1) * quarterMs,
+        accent: k === 1,
+        beat: k,
+      });
+    }
+    return cues;
+  }
+
+  const cues = buildCuesFromTicks() ?? buildCuesFromBpm();
 
   /** 第一顆塞不下就整組不發 */
   const feasible = cues.length > 0 && cues[0].t >= 0;

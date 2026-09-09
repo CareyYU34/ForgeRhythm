@@ -88,10 +88,18 @@ function dedupeNotes(notes, tolMs) {
 
 /**
  * @param {Object} json Tone.js Midi 匯出的 JSON
+ * @param {Object} [options]
+ * @param {"basic"|"advanced"} [options.difficulty="advanced"]
+ *   難度分級（決定吃哪些音符）：
+ *     "advanced"（進階，八分）→ 不過濾，吃譜面全部音符（原行為）。
+ *     "basic"   （預設，四分）→ 只吃落在四分位置（ticks % ppq === 0）的音符。
+ *   ⚠ 函式層預設為 "advanced"，故舊呼叫端（未帶 options）行為不變；
+ *     App 端的「預設難度」由 state.songDifficulty 決定，見 songSession。
  * @returns {Object} chart
  */
-export function loadChart(json) {
+export function loadChart(json, options = {}) {
   const warnings = [];
+  const difficulty = options.difficulty === "basic" ? "basic" : "advanced";
 
   // ── 音符收集：支援單軌與多軌 ──
   let raw = [];
@@ -103,7 +111,7 @@ export function loadChart(json) {
     raw = json.notes;
   }
 
-  const notes = raw
+  let notes = raw
     .filter((n) => Number.isFinite(n?.time) && Number.isFinite(n?.midi))
     .map((n) => ({
       time: n.time * 1000, // 秒 → ms
@@ -117,6 +125,35 @@ export function loadChart(json) {
 
   if (notes.length === 0) {
     throw new Error("譜面沒有可用的音符（需要 tracks[].notes 或 notes）");
+  }
+
+  // ── 難度過濾：預設（四分）只保留落在四分位置的音符 ────────────────────────
+  //
+  // 四分音符 = ppq 個 ticks，故「四分位置」= tick 為 ppq 的整數倍（與拍號
+  // 分母無關）。下游 sequencer / barGrid / cueTrack / songUI 全讀同一份
+  // onsetList，於是在此過濾即可讓「觸發、對齊、UI」一起降到四分密度。
+  //
+  // ⚠ 保險：ticks 缺失或譜面沒有足夠的四分位置音符時，過濾會把譜面掏空。
+  //   此時放棄過濾、退回進階（全部音符），並警告 —— 空譜比難度未生效更糟。
+  let difficultyApplied = difficulty;
+  if (difficulty === "basic") {
+    const ppq = Number.isFinite(json?.header?.ppq) ? json.header.ppq : 480;
+    const kept = notes.filter(
+      (n) => !Number.isFinite(n.ticks) || n.ticks % ppq === 0,
+    );
+    if (kept.length >= 2) {
+      if (kept.length < notes.length) {
+        warnings.push(
+          `難度「預設（四分）」：已濾除 ${notes.length - kept.length} 顆非四分位置音符。`,
+        );
+      }
+      notes = kept;
+    } else {
+      difficultyApplied = "advanced";
+      warnings.push(
+        "難度「預設（四分）」無法套用（四分位置音符不足），改用進階（全部音符）。",
+      );
+    }
   }
 
   const onsetList = dedupeNotes(notes, TUNING.ONSET_DEDUPE_MS);
@@ -168,6 +205,7 @@ export function loadChart(json) {
     onsetList,
     baseBpm,
     bpmEstimated,
+    difficulty: difficultyApplied,
     medianGap,
     midiCount,
     warnings,

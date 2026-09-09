@@ -155,7 +155,11 @@ export function createSongSession({
       // ⚠ 檔名雖已改為 ASCII，仍保留 encodeURI 以防日後放中文檔名
       const res = await fetch(encodeURI(song.chart));
       if (!res.ok) throw new Error(`譜面載入失敗（HTTP ${res.status}）`);
-      chart = loadChart(await res.json());
+      // 難度分級：預設（四分）只吃四分位置音符，進階（八分）吃全部。
+      // 於載入時套用 —— 播放中切換難度不影響本次，需重新選歌才生效。
+      chart = loadChart(await res.json(), {
+        difficulty: state.songDifficulty === "advanced" ? "advanced" : "basic",
+      });
 
       sequencer = createSequencer({ chart });
       // ⚠ 傳 getTransport 函式而非實例 —— 此刻 transport 還沒建立
