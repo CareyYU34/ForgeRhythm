@@ -1450,8 +1450,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 圖示以 Font Awesome 的 ::before 呈現，字體由 .fas 提供，
-     此處不再指定 font-family（原本的 --song-mono 是給字母用的）。 */
+  /* 圖示以 ::before 遮罩呈現（見下方 .limb-* 規則）。font-size 仍決定
+     圖示大小（::before 用 1em 方框），故保留。 */
   font-style: normal;
   font-size: var(--song-font-next);
   /* pending 是無字色塊。圖示要靠 transparent 藏，不能只靠縮小 ——
@@ -1473,6 +1473,32 @@ body {
 }
 .song-note[data-midi="42"] {
   --nc: var(--song-hat);
+}
+
+/* 手 / 腳 圖示 —— 自訂剪影遮罩（取代 Font Awesome 字符）。
+   形狀由 PNG 的 alpha 決定，本體用 background-color: currentColor 上色，
+   因此完全沿用 .song-note 既有的 color 邏輯：pending 為 transparent（藏）、
+   next 為 --song-ink（顯示）。1em 方框讓圖示隨 font-size 一起縮放。
+   ⚠ 勿改成 background-image / <img>：那會失去「pending 藏起來」的能力，
+     縮小後仍會在鼓色塊上留下黑色殘影（與上方 color:transparent 註解同因）。 */
+.song-note.limb-hand::before,
+.song-note.limb-foot::before {
+  content: "";
+  display: block;
+  /* 1em（= font-size）只填滿方框約半格。放大到 1.7em 讓圖示幾乎貼滿方框；
+     遮罩 PNG 已裁到剪影邊界，故此倍率即近似實際填充率。仍以 em 為單位，
+     使圖示隨 --song-font-* 一起縮放（見 :root 的字級說明）。 */
+  width: 1.7em;
+  height: 1.7em;
+  background-color: currentColor;
+  -webkit-mask: var(--limb-src) center / contain no-repeat;
+  mask: var(--limb-src) center / contain no-repeat;
+}
+.song-note.limb-hand {
+  --limb-src: url("assets/icons/limb-hand.png");
+}
+.song-note.limb-foot {
+  --limb-src: url("assets/icons/limb-foot.png");
 }
 
 /* 已經過去的音符。縮到最小 + 壓暗，成為節奏軌跡：

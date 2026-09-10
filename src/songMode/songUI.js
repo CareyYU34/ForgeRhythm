@@ -36,17 +36,18 @@ import { TUNING } from "./tuning.js";
 import { midiRequiresKnee } from "../audioEngine.js";
 
 /**
- * MIDI → 觸發部位的 Font Awesome 圖示。
+ * MIDI → 觸發部位的圖示 class。
  *
  * 顯示的是「這一顆要用手還是腳打」，而非鼓種：
  *   kick（大鼓）用腳、其餘（snare / hihat）用手 ——
  *   與 audioEngine.midiRequiresKnee 同源，也對應歌曲模式的部位配對。
  *
- * 回傳的是 icon class；節點另需加上 fas（用法同專案其他 <i class="fas ...">）。
- * 配色仍走 data-midi（見 styles 的 .song-note[data-midi]）。
+ * 回傳自訂 class（limb-hand / limb-foot）；圖形由 styles 的 ::before 遮罩
+ * 呈現（assets/icons/limb-*.png），填色走 currentColor，沿用 .song-note 既有的
+ * color 邏輯（pending 藏 / next 顯示 --song-ink）。配色仍走 data-midi。
  */
 function limbIconClass(midi) {
-  return midiRequiresKnee(midi) ? "fa-shoe-prints" : "fa-hand";
+  return midiRequiresKnee(midi) ? "limb-foot" : "limb-hand";
 }
 
 const $ = (id) => document.getElementById(id);
@@ -392,9 +393,9 @@ export function createSongUI() {
         node.dataset.index = String(i);
         node.dataset.state = "pending";
         node.style.left = `${((o.time - startMs) / spanMs) * 100}%`;
-        // 手 / 腳 圖示取代原本的字母（K/S/H）。glyph 走 ::before，
+        // 手 / 腳 圖示取代原本的字母（K/S/H）。圖形走 ::before 遮罩，
         // 沿用 .song-note 的 color: transparent 機制隱藏 pending 顆。
-        node.classList.add("fas", limbIconClass(o.midi));
+        node.classList.add(limbIconClass(o.midi));
         noteFrag.appendChild(node);
         blockNoteNodes.push(node);
       }
