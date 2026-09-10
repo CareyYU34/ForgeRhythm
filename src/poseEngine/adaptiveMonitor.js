@@ -9,6 +9,9 @@
  *      （v2 循環式估計器，見下方「PF 低谷估計架構」）
  *   3. Knee 自適應：偵測「有踢腿意圖但未觸發」，分別調整 windowDropHit / avgSpeedHit
  *   4. Visibility 自適應：根據節點歷史可見度，動態調整全域 visibilityThreshold
+ *   5. 手部 near-miss 升級：偵測「有下擊但差一點才觸發」，把 PF_HIT 往上推（只升不降），
+ *      解開「力道到不了 PF_HIT → 沒有成功樣本 → PF_HIT 卡死打不出來」的死結。
+ *      降回真實位置由成功命中的 7 格中位數負責（updateHandNearMiss / raiseHitFromNearMiss）
  *
  * 設計原則：
  *   - 完全獨立於 poseLoop，只透過 state 共享資料
@@ -73,6 +76,17 @@ const MONITOR_TUNING = {
   FALLBACK_STUCK_MS_COLD: 7000, // 冷啟動階段的回退門檻（ms）
   FALLBACK_ESCALATE_WINDOW_MS: 60000, // 升級判定的時間窗（ms）
   FALLBACK_ESCALATE_COUNT: 3, // 窗內回退達此次數則凍結該 zone
+
+  // 手部 near-miss 升級器（只升不降；讓「一直打不中」的死結能被解開）
+  // 偵測「有下擊、谷底落在 PF_HIT 之上一點（差一點就中）」，累積數次後把 PF_HIT
+  // 往上推到使用者最接近的谷底，讓同樣力道下一次能觸發。降回真實位置由成功命中
+  // 的 7 格中位數負責（見 applyPFHitUpdate），兩者一推一拉自然收斂。
+  HAND_NM_BAND: 1.5, // near-miss 上界 = PF_HIT × 此值（谷底落在 (PF_HIT, 上界] 算差一點）
+  HAND_NM_MIN_DEPTH: 0.15, // 該次下擊需有此深度（peak−谷底）才算真攻擊，濾除懸停抖動
+  HAND_NM_REVERSAL_DELTA: 0.03, // 谷底回升超過此量才確認一次下擊結束（濾單幀跳點）
+  HAND_NM_COUNT: 3, // 累積幾次 near-miss 才上調
+  HAND_NM_COOLDOWN_MS: 3000, // 兩次上調間的冷卻
+  HAND_NM_MARGIN: 1.05, // 上調目標 = 最接近谷底 × 此值（略高於谷底，確保能觸發）
 
   // Knee 自適應
   NEAR_MISS_RATIO: 0.7, // 達到門檻幾成視為近失
@@ -181,6 +195,19 @@ function createTroughTracker(zoneKey, nowMs) {
   };
 }
 
+// ─── 建立手部 near-miss 追蹤器（per zone）──────────────────────────────────
+
+function createHandNearMissTracker() {
+  return {
+    armed: false, // 抬手到 armLevel 之上才武裝，開始追這次下擊
+    peakPF: 0, // 本次下擊的抬手高點（判斷攻擊深度）
+    strokeMin: Infinity, // 本次下擊的谷底
+    nearMissCount: 0, // 連續 near-miss 累積數
+    bestMissMin: Infinity, // 這串 near-miss 中最接近門檻的谷底
+    lastAdjustMs: -Infinity, // 上次上調時間（冷卻用）
+  };
+}
+
 // ─── 建立 Knee 近失追蹤器（per side）───────────────────────────────────────
 
 function createKneeNearMissTracker() {
@@ -202,6 +229,7 @@ function createKneeNearMissTracker() {
 export function createAdaptiveMonitor({ state }) {
   // ── 內部監控狀態 ──
   let troughTrackers = {}; // { [zoneKey]: TroughTracker }
+  let handNearMissTrackers = {}; // { [zoneKey]: HandNearMissTracker }
   let kneeTrackers = {}; // { left: KneeTracker, right: KneeTracker }
   let visBuffers = {}; // { [landmarkIndex]: number[] }
   let visStableCount = 0; // Visibility 提升的連續穩定次數
@@ -221,8 +249,10 @@ export function createAdaptiveMonitor({ state }) {
 
   function initTrackers(nowMs = performance.now()) {
     troughTrackers = {};
+    handNearMissTrackers = {};
     for (const zoneKey of Object.keys(ZONE_MAP)) {
       troughTrackers[zoneKey] = createTroughTracker(zoneKey, nowMs);
+      handNearMissTrackers[zoneKey] = createHandNearMissTracker();
     }
 
     kneeTrackers = {
@@ -553,6 +583,132 @@ export function createAdaptiveMonitor({ state }) {
     );
   }
 
+  // ── 手部 near-miss 升級（每幀呼叫）──
+  //
+  // 解「一直打不中」死結：canHit 只在成功命中時才 true→false，所以 miss 永遠不進
+  // 7 格；若使用者力道到不了 PF_HIT，就永遠沒有樣本、PF_HIT 卡死打不出來。此機制
+  // 偵測「有下擊但谷底落在 PF_HIT 之上一點」的 near-miss，累積數次後把 PF_HIT 往上
+  // 推到最接近的谷底（只升不降）。一旦推到能觸發，成功命中就會進 7 格，由中位數 +
+  // M4 限速把 PF_HIT 拉回真實位置（applyPFHitUpdate）。兩者一推一拉自然收斂。
+  //
+  // ⚠ 不寫 troughPF、不進 7 格 —— 避免用 miss 谷底污染中位數（那正是舊 v3 壞掉的原因）。
+
+  function updateHandNearMiss(zoneKey, rawPF, nowMs) {
+    if (!state.calibrationProfile) return;
+    const nm = handNearMissTrackers[zoneKey];
+    if (!nm) return;
+
+    const { side, direction } = ZONE_MAP[zoneKey];
+    const zone = state.calibrationProfile[side]?.[direction];
+    if (!zone || typeof zone.PF_HIT !== "number") return;
+
+    const PF_HIT = zone.PF_HIT;
+
+    // 成功命中（canHit=false）：清空 miss streak（已能觸發，交回 7 格中位數處理）
+    if (!readCanHit(zoneKey)) {
+      nm.armed = false;
+      nm.peakPF = 0;
+      nm.strokeMin = Infinity;
+      nm.nearMissCount = 0;
+      nm.bestMissMin = Infinity;
+      return;
+    }
+
+    // near-miss 上界：谷底落在 (PF_HIT, armLevel] 才算「差一點」；不超過 0.3
+    const armLevel = Math.min(
+      MONITOR_TUNING.TROUGH_MAX_PF,
+      PF_HIT * MONITOR_TUNING.HAND_NM_BAND,
+    );
+
+    // 抬手越過 armLevel 才武裝一次，開始追這一次下擊。
+    // 必須 !armed 才武裝：否則 PF 高於 armLevel 的每一幀都會重置 peak/strokeMin，
+    // 把下擊深度吃掉。武裝後持續追到反轉，再由反轉分支解除武裝。
+    if (rawPF > armLevel && !nm.armed) {
+      nm.armed = true;
+      nm.peakPF = rawPF;
+      nm.strokeMin = Infinity;
+    }
+
+    if (!nm.armed) return;
+
+    if (rawPF > nm.peakPF) nm.peakPF = rawPF;
+    if (rawPF < nm.strokeMin) nm.strokeMin = rawPF;
+
+    // 谷底回升超過 REVERSAL_DELTA → 確認這次下擊結束
+    if (
+      Number.isFinite(nm.strokeMin) &&
+      rawPF > nm.strokeMin + MONITOR_TUNING.HAND_NM_REVERSAL_DELTA
+    ) {
+      const bottom = nm.strokeMin;
+      const depth = nm.peakPF - bottom;
+      nm.armed = false;
+      nm.strokeMin = Infinity;
+
+      // 需有足夠深度才算真攻擊（濾除在 armLevel 附近懸停的抖動）
+      if (depth < MONITOR_TUNING.HAND_NM_MIN_DEPTH) return;
+
+      // 有效攻擊 = 使用者正在嘗試打擊 → 重置 M5 stuck 計時，
+      // 避免 M5 在 miss streak 期間把升級器拉高的 PF_HIT 回退到 baseline。
+      const tt = troughTrackers[zoneKey];
+      if (tt) tt.canHitTrueSinceMs = null;
+
+      // near-miss：谷底落在 (PF_HIT, armLevel]（差一點就中）
+      if (bottom > PF_HIT && bottom <= armLevel) {
+        nm.nearMissCount += 1;
+        if (bottom < nm.bestMissMin) nm.bestMissMin = bottom;
+
+        if (
+          nm.nearMissCount >= MONITOR_TUNING.HAND_NM_COUNT &&
+          nowMs - nm.lastAdjustMs >= MONITOR_TUNING.HAND_NM_COOLDOWN_MS
+        ) {
+          raiseHitFromNearMiss(zoneKey, nm.bestMissMin);
+          nm.nearMissCount = 0;
+          nm.bestMissMin = Infinity;
+          nm.lastAdjustMs = nowMs;
+        }
+      }
+    }
+  }
+
+  // 把 PF_HIT 上調到「使用者最接近的谷底 × 邊際」，只升不降，以 peakCap 為上限。
+  // 僅改 PF_HIT / PF_RELEASE，不動 troughPF 與 7 格 buffer。
+
+  function raiseHitFromNearMiss(zoneKey, bestMissMin) {
+    const { side, direction } = ZONE_MAP[zoneKey];
+    const current = state.calibrationProfile[side]?.[direction];
+    if (!current || typeof current.PF_HIT !== "number") return;
+
+    const peakPFMean =
+      current._stats?.peakPFMean ?? DEFAULT_PEAK_PF_MEAN[zoneKey] ?? 1.0;
+    const peakCap = peakPFMean * TUNING.PF_HIT_PEAK_CAP_RATIO;
+
+    const prevPFHit = current.PF_HIT;
+    let target = bestMissMin * MONITOR_TUNING.HAND_NM_MARGIN;
+    target = Math.min(target, peakCap);
+
+    const newPFHit = round4(Math.max(prevPFHit, target)); // 只升不降
+    if (newPFHit === prevPFHit) return;
+
+    const newRelease = computeReleaseFromHit(newPFHit, peakPFMean);
+
+    state.calibrationProfile = {
+      ...state.calibrationProfile,
+      [side]: {
+        ...state.calibrationProfile[side],
+        [direction]: {
+          ...current,
+          PF_HIT: newPFHit,
+          PF_RELEASE: newRelease,
+        },
+      },
+    };
+
+    console.log(
+      `[adaptiveMonitor] ${zoneKey} near-miss 升級 PF_HIT: ` +
+        `${prevPFHit.toFixed(4)} → ${newPFHit.toFixed(4)}（最接近谷底 ${bestMissMin.toFixed(4)}）`,
+    );
+  }
+
   // ── Knee 近失追蹤（每幀呼叫）──
 
   function updateKneeNearMiss(side, nowMs) {
@@ -861,6 +1017,12 @@ export function createAdaptiveMonitor({ state }) {
 
       if (leftPF != null) updateTroughSampling("left_front", leftPF, nowMs);
       if (rightPF != null) updateTroughSampling("right_front", rightPF, nowMs);
+
+      // ── 手部 near-miss 升級（解「一直打不中」死結）──
+      // 必須在 checkStuckFallback 之前：偵測到有效下擊會重置 M5 的 stuck 計時，
+      // 避免 M5 在 miss streak 期間把升級器上調的 PF_HIT 回退到 baseline。
+      if (leftPF != null) updateHandNearMiss("left_front", leftPF, nowMs);
+      if (rightPF != null) updateHandNearMiss("right_front", rightPF, nowMs);
 
       // 故障偵測：canHit 卡在 true 代表「有動作但打不中」
       checkStuckFallback("left_front", nowMs);
