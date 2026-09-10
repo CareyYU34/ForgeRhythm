@@ -91,7 +91,7 @@ const MONITOR_TUNING = {
   VIS_STEP_DOWN: 0.03, // 每次降低的幅度
   VIS_STEP_UP: 0.02, // 每次提升的幅度
   VIS_MIN: 0.4, // visibilityThreshold 下限
-  VIS_MAX: 0.9, // visibilityThreshold 上限
+  VIS_MAX: 0.75, // visibilityThreshold 上限（自動調整不再往上爬過 0.75）
   VIS_ANKLE_PRESENCE_RATIO: 0.5, // 踝節點低於此比例時不計入關鍵節點判斷
 };
 
@@ -753,17 +753,21 @@ export function createAdaptiveMonitor({ state }) {
     if (allStable) {
       visStableCount += 1;
       if (visStableCount >= MONITOR_TUNING.VIS_RAISE_STABLE_COUNT) {
-        const newThreshold = Math.min(
-          MONITOR_TUNING.VIS_MAX,
-          round4(
-            (state.visibilityThreshold ?? 0.75) + MONITOR_TUNING.VIS_STEP_UP,
-          ),
-        );
-        if (newThreshold !== state.visibilityThreshold) {
-          console.log(
-            `[adaptiveMonitor] visibilityThreshold 提升: ${state.visibilityThreshold?.toFixed(2)} → ${newThreshold}`,
+        const current = state.visibilityThreshold ?? 0.75;
+        // VIS_MAX 只是「提升」的天花板。若滑桿已被手動拉到 VIS_MAX 以上，
+        // 以滑桿為主：不提升、也不把它拉回 VIS_MAX（自動調整照常跑，僅抑制提升；
+        // 下降分支不受影響）。current < VIS_MAX 時才提升，並仍以 VIS_MAX 夾上緣。
+        if (current < MONITOR_TUNING.VIS_MAX) {
+          const newThreshold = Math.min(
+            MONITOR_TUNING.VIS_MAX,
+            round4(current + MONITOR_TUNING.VIS_STEP_UP),
           );
-          state.visibilityThreshold = newThreshold;
+          if (newThreshold !== current) {
+            console.log(
+              `[adaptiveMonitor] visibilityThreshold 提升: ${current.toFixed(2)} → ${newThreshold}`,
+            );
+            state.visibilityThreshold = newThreshold;
+          }
         }
         visStableCount = 0;
       }

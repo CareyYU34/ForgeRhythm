@@ -391,6 +391,9 @@ async function bootstrap() {
     onVisibilityThresholdChange: (value) => {
       state.visibilityThreshold = value;
     },
+    // 讓設定面板即時反映 adaptiveMonitor 在背景漂移後的可見度閾值。
+    // 上界由 adaptiveMonitor 的 VIS_MAX（0.75）保證，此處直接讀真實值。
+    getLiveVisibilityThreshold: () => state.visibilityThreshold,
     onDrawPoseDebugChange: (value) => {
       state.drawPoseDebugEnabled = value;
     },

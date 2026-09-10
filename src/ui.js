@@ -87,11 +87,32 @@ function createNumericControl({
     onChange(safeInternal);
   };
 
+  // 距上次使用者操作在此時間窗內就不覆蓋顯示，避免打斷拖曳/輸入。
+  // ⚠ 不能用 focus 判斷：range 被拖曳/點擊後仍保有 focus，以 focus 為準會讓
+  //   syncDisplay 永久跳過（放開滑桿後自動下降也不會反映）。改用時間窗。
+  const USER_EDIT_SUPPRESS_MS = 800;
+  let lastUserEditMs = -Infinity;
+
+  // 靜默同步顯示值：只更新兩個輸入框，不觸發 onChange。
+  // 供外部（自動化調整）即時反映用。
+  const syncDisplay = (nextInternal) => {
+    if (!Number.isFinite(nextInternal)) return;
+    if (performance.now() - lastUserEditMs < USER_EDIT_SUPPRESS_MS) return;
+    const safeDisplay = Math.round(
+      clampDisplay(toDisplay(clampInternal(nextInternal))),
+    );
+    const next = String(safeDisplay);
+    if (range.value !== next) range.value = next;
+    if (number.value !== next) number.value = next;
+  };
+
   range.addEventListener("input", () => {
+    lastUserEditMs = performance.now();
     setFromDisplay(Number(range.value));
   });
 
   number.addEventListener("input", () => {
+    lastUserEditMs = performance.now();
     if (number.value.trim() === "") return;
     setFromDisplay(Number(number.value));
   });
@@ -107,7 +128,7 @@ function createNumericControl({
   row.appendChild(title);
   row.appendChild(inputsWrap);
 
-  return row;
+  return { row, syncDisplay };
 }
 
 function createToggleControl({ label, value, onChange }) {
@@ -211,9 +232,14 @@ export function initSettingsPanel({
   onAdvancedDifficultyChange,
   onDrawPoseDebugChange,
   onShowPFOverlayChange,
+  // 讀取即時（自動化調整後）的可見度閾值。adaptiveMonitor 會在背景漂移
+  // state.visibilityThreshold，UI 端輪詢此函式把最新值反映到控制項顯示。
+  getLiveVisibilityThreshold,
 }) {
   const controlsEl = panelEl.querySelector("#runtimeControls");
   const debugControlsEl = panelEl.querySelector("#debugControls");
+
+  let visibilityControl = null;
 
   if (controlsEl) {
     controlsEl.innerHTML = "";
@@ -230,23 +256,22 @@ export function initSettingsPanel({
         toDisplay: (internal) => internal * 10,
         toInternal: (display) => Number((display / 10).toFixed(3)),
         onChange: onOutputGainChange,
-      }),
+      }).row,
     );
 
-    controlsEl.appendChild(
-      createNumericControl({
-        label: "模型可見度閾值",
-        value: visibilityThreshold,
-        min: 0,
-        max: 1,
-        displayMin: 10,
-        displayMax: 100,
-        displayStep: 1,
-        toDisplay: (internal) => internal * 100,
-        toInternal: (display) => Number((display / 100).toFixed(4)),
-        onChange: onVisibilityThresholdChange,
-      }),
-    );
+    visibilityControl = createNumericControl({
+      label: "模型可見度閾值",
+      value: visibilityThreshold,
+      min: 0,
+      max: 1,
+      displayMin: 10,
+      displayMax: 100,
+      displayStep: 1,
+      toDisplay: (internal) => internal * 100,
+      toInternal: (display) => Number((display / 100).toFixed(4)),
+      onChange: onVisibilityThresholdChange,
+    });
+    controlsEl.appendChild(visibilityControl.row);
 
     // 歌曲模式：大鼓限膝蓋、其餘限手部。關閉 = 任何部位都推進下一顆（舊行為）。
     controlsEl.appendChild(
@@ -299,4 +324,14 @@ export function initSettingsPanel({
   document.addEventListener("click", () => {
     panelEl.classList.add("is-hidden");
   });
+
+  // 即時反映自動化調整：輪詢 state.visibilityThreshold 並靜默同步到控制項顯示。
+  // 面板關閉時不更新（省去無意義的 DOM 寫入）；使用者操作中由 syncDisplay 自行跳過。
+  // adaptiveMonitor 約每 2s 才漂移一次，250ms 輪詢已等同即時。
+  if (visibilityControl && typeof getLiveVisibilityThreshold === "function") {
+    setInterval(() => {
+      if (panelEl.classList.contains("is-hidden")) return;
+      visibilityControl.syncDisplay(getLiveVisibilityThreshold());
+    }, 250);
+  }
 }
