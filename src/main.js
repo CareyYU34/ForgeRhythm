@@ -380,6 +380,7 @@ async function bootstrap() {
     visibilityThreshold: state.visibilityThreshold,
     limbMode: state.limbMode,
     advancedDifficulty: state.songDifficulty === "advanced",
+    playbackSpeed: document.getElementById("playbackSpeed")?.value ?? "1",
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
     showPFOverlay: state.showPFOverlay,
     onOutputGainChange: (value) => {
@@ -393,6 +394,15 @@ async function bootstrap() {
     onAdvancedDifficultyChange: (value) => {
       state.songDifficulty = value ? "advanced" : "basic";
     },
+    // 播放速度：轉發到影片控制列的 #playbackSpeed，重用其既有 change 處理
+    //（handlePlaybackSpeed → activeTransport.setPlaybackRate），兩邊自動同步。
+    onPlaybackSpeedChange: (value) => {
+      const videoSpeed = document.getElementById("playbackSpeed");
+      if (videoSpeed) {
+        videoSpeed.value = value;
+        videoSpeed.dispatchEvent(new Event("change"));
+      }
+    },
     onVisibilityThresholdChange: (value) => {
       state.visibilityThreshold = value;
     },
@@ -405,6 +415,13 @@ async function bootstrap() {
     onShowPFOverlayChange: (value) => {
       state.showPFOverlay = value;
     },
+  });
+
+  // 影片控制列速度變更時，反向同步到設定面板的速度選單，維持兩邊一致。
+  document.getElementById("playbackSpeed")?.addEventListener("change", () => {
+    const s = document.getElementById("settingsPlaybackSpeed");
+    const v = document.getElementById("playbackSpeed");
+    if (s && v && s.value !== v.value) s.value = v.value;
   });
 
   bindCameraToggle({

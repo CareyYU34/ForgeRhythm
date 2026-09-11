@@ -285,17 +285,24 @@ export function setActiveTransport(transport) {
   activeTransport = transport;
 
   const speedEl = document.getElementById("playbackSpeed");
+  const settingsSpeedEl = document.getElementById("settingsPlaybackSpeed");
+  const speedEls = [speedEl, settingsSpeedEl].filter(Boolean);
   const seekBar = document.getElementById("seekBar");
   const volumeSlider = document.getElementById("volumeSlider");
 
   // 變速：本機影片與 YT 皆支援。切換播放器時把 UI 上的倍速推給新 transport
   //（跨播放器保留使用者設定，與下方音量同理）。
-  if (speedEl) {
-    speedEl.disabled = !transport?.supportsRate;
-    if (transport && !transport.supportsRate) {
-      speedEl.value = "1";
-    } else if (transport?.supportsRate) {
-      transport.setPlaybackRate(parseFloat(speedEl.value) || 1);
+  // 速度有兩個 UI 入口：影片控制列 #playbackSpeed 與設定面板 #settingsPlaybackSpeed，
+  // 兩者需保持一致 —— 以影片控制列的值為準，一起 disable / 對齊。
+  if (speedEls.length) {
+    const supports = !!transport?.supportsRate;
+    for (const el of speedEls) el.disabled = !supports;
+    if (transport && !supports) {
+      for (const el of speedEls) el.value = "1";
+    } else if (supports) {
+      const rate = parseFloat(speedEl?.value ?? speedEls[0].value) || 1;
+      transport.setPlaybackRate(rate);
+      for (const el of speedEls) el.value = String(rate);
     }
   }
 

@@ -173,11 +173,19 @@ function createToggleControl({ label, value, onChange }) {
   return row;
 }
 
+/** 分區小標題（設定面板用），回傳一個 div。 */
+function sectionTitle(text) {
+  const el = document.createElement("div");
+  el.className = "settings-section-title";
+  el.textContent = text;
+  return el;
+}
+
 /**
  * 三選一（以上）的下拉控制項，樣式沿用 .rack-select。
- * @param {{label:string, value:string, options:{value:string,label:string}[], onChange:(v:string)=>void}} opts
+ * @param {{label:string, value:string, options:{value:string,label:string}[], onChange:(v:string)=>void, id?:string}} opts
  */
-function createSelectControl({ label, value, options, onChange }) {
+function createSelectControl({ label, value, options, onChange, id }) {
   const row = document.createElement("div");
   row.className = "settings-control-row";
 
@@ -187,6 +195,7 @@ function createSelectControl({ label, value, options, onChange }) {
 
   const sel = document.createElement("select");
   sel.className = "rack-select";
+  if (id) sel.id = id;
   for (const opt of options) {
     const o = document.createElement("option");
     o.value = opt.value;
@@ -252,12 +261,14 @@ export function initSettingsPanel({
   visibilityThreshold,
   limbMode,
   advancedDifficulty,
+  playbackSpeed,
   drawPoseDebugEnabled,
   showPFOverlay,
   onOutputGainChange,
   onVisibilityThresholdChange,
   onLimbModeChange,
   onAdvancedDifficultyChange,
+  onPlaybackSpeedChange,
   onDrawPoseDebugChange,
   onShowPFOverlayChange,
   // 讀取即時（自動化調整後）的可見度閾值。adaptiveMonitor 會在背景漂移
@@ -271,6 +282,9 @@ export function initSettingsPanel({
 
   if (controlsEl) {
     controlsEl.innerHTML = "";
+
+    // ── 一般 ──
+    controlsEl.appendChild(sectionTitle("一般"));
 
     controlsEl.appendChild(
       createNumericControl({
@@ -301,13 +315,16 @@ export function initSettingsPanel({
     });
     controlsEl.appendChild(visibilityControl.row);
 
-    // 歌曲模式部位配對（三選一）：
+    // ── 歌曲模式 ──
+    controlsEl.appendChild(sectionTitle("歌曲模式"));
+
+    // 部位配對（三選一）：
     //   off      = 任何部位都推進下一顆
     //   standard = 大鼓限膝蓋、其餘限手部
     //   allKnee  = 全部音符都限膝蓋
     controlsEl.appendChild(
       createSelectControl({
-        label: "部位配對（歌曲模式）",
+        label: "部位配對",
         value: limbMode,
         options: [
           { value: "off", label: "不配對（任何部位）" },
@@ -318,7 +335,7 @@ export function initSettingsPanel({
       }),
     );
 
-    // 歌曲模式難度：關閉 = 預設（四分，只吃四分位置音符）；
+    // 難度：關閉 = 預設（四分，只吃四分位置音符）；
     // 開啟 = 進階（八分，吃全部音符）。於下次載入譜面（重新選歌）時生效。
     controlsEl.appendChild(
       createToggleControl({
@@ -327,10 +344,33 @@ export function initSettingsPanel({
         onChange: onAdvancedDifficultyChange,
       }),
     );
+
+    // 播放速度：與影片控制列的 #playbackSpeed 雙向同步（見 main.js 接線）。
+    // 沒有影片 / 播放器不支援變速時由 mediaPanel.setActiveTransport 設為 disabled。
+    controlsEl.appendChild(
+      createSelectControl({
+        id: "settingsPlaybackSpeed",
+        label: "播放速度",
+        value: playbackSpeed ?? "1",
+        options: [
+          { value: "0.5", label: "0.5x" },
+          { value: "0.75", label: "0.75x" },
+          { value: "1", label: "1x" },
+          { value: "1.25", label: "1.25x" },
+          { value: "1.5", label: "1.5x" },
+          { value: "2", label: "2x" },
+        ],
+        onChange: onPlaybackSpeedChange,
+      }),
+    );
   }
 
   if (debugControlsEl) {
     debugControlsEl.innerHTML = "";
+
+    // ── 除錯 ──
+    debugControlsEl.appendChild(sectionTitle("除錯"));
+
     debugControlsEl.appendChild(
       createToggleControl({
         label: "全身節點",

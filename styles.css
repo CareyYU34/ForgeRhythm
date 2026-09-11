@@ -274,6 +274,21 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* 設定面板分區小標題（一般 / 歌曲模式 / 音色 / 除錯） */
+.settings-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 8px 0 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+/* 群組內第一個標題（一般）不需要額外上緣間距 */
+.runtime-controls .settings-section-title:first-child {
+  margin-top: 0;
+}
+
 .runtime-controls {
   display: flex;
   flex-direction: column;
