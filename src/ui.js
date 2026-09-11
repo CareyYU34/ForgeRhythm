@@ -173,6 +173,34 @@ function createToggleControl({ label, value, onChange }) {
   return row;
 }
 
+/**
+ * 三選一（以上）的下拉控制項，樣式沿用 .rack-select。
+ * @param {{label:string, value:string, options:{value:string,label:string}[], onChange:(v:string)=>void}} opts
+ */
+function createSelectControl({ label, value, options, onChange }) {
+  const row = document.createElement("div");
+  row.className = "settings-control-row";
+
+  const title = document.createElement("div");
+  title.className = "settings-control-label";
+  title.textContent = label;
+
+  const sel = document.createElement("select");
+  sel.className = "rack-select";
+  for (const opt of options) {
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === value) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener("change", () => onChange(sel.value));
+
+  row.appendChild(title);
+  row.appendChild(sel);
+  return row;
+}
+
 export function bindSoundUI({ rackEl, soundLibrary, zones, zoneSound }) {
   rackEl.innerHTML = "";
 
@@ -222,13 +250,13 @@ export function initSettingsPanel({
   panelEl,
   outputGain,
   visibilityThreshold,
-  strictLimbMatch,
+  limbMode,
   advancedDifficulty,
   drawPoseDebugEnabled,
   showPFOverlay,
   onOutputGainChange,
   onVisibilityThresholdChange,
-  onStrictLimbMatchChange,
+  onLimbModeChange,
   onAdvancedDifficultyChange,
   onDrawPoseDebugChange,
   onShowPFOverlayChange,
@@ -273,12 +301,20 @@ export function initSettingsPanel({
     });
     controlsEl.appendChild(visibilityControl.row);
 
-    // 歌曲模式：大鼓限膝蓋、其餘限手部。關閉 = 任何部位都推進下一顆（舊行為）。
+    // 歌曲模式部位配對（三選一）：
+    //   off      = 任何部位都推進下一顆
+    //   standard = 大鼓限膝蓋、其餘限手部
+    //   allKnee  = 全部音符都限膝蓋
     controlsEl.appendChild(
-      createToggleControl({
-        label: "大鼓限膝蓋（歌曲模式）",
-        value: strictLimbMatch,
-        onChange: onStrictLimbMatchChange,
+      createSelectControl({
+        label: "部位配對（歌曲模式）",
+        value: limbMode,
+        options: [
+          { value: "off", label: "不配對（任何部位）" },
+          { value: "standard", label: "標準（大鼓限膝蓋）" },
+          { value: "allKnee", label: "全膝蓋" },
+        ],
+        onChange: onLimbModeChange,
       }),
     );
 

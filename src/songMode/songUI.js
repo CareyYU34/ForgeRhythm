@@ -36,23 +36,26 @@ import { TUNING } from "./tuning.js";
 import { midiRequiresKnee } from "../audioEngine.js";
 
 /**
- * MIDI → 觸發部位的圖示 class。
+ * MIDI → 觸發部位的圖示 class（依當前 limbMode）。
  *
- * 顯示的是「這一顆要用手還是腳打」，而非鼓種：
- *   kick（大鼓）用腳、其餘（snare / hihat）用手 ——
- *   與 audioEngine.midiRequiresKnee 同源，也對應歌曲模式的部位配對。
+ * 顯示的是「這一顆要用哪個部位打」，而非鼓種：
+ *   - "off"（不配對）：任一部位皆可 → limb-both（手+腳並列，避免暗示特定部位）
+ *   - "allKnee"：全部音符都用腳（膝蓋）→ 一律 limb-foot
+ *   - "standard"：kick 用腳、其餘用手，與 midiRequiresKnee 同源
  *
- * 回傳自訂 class（limb-hand / limb-foot）；圖形由 styles 的 ::before 遮罩
- * 呈現（assets/icons/limb-*.png），填色走 currentColor，沿用 .song-note 既有的
- * color 邏輯（pending 藏 / next 顯示 --song-ink）。配色仍走 data-midi。
+ * 回傳自訂 class（limb-hand / limb-foot / limb-both）；圖形由 styles 的
+ * ::before（/::after）遮罩呈現（assets/icons/limb-*.png），填色走 currentColor，
+ * 沿用 .song-note 既有的 color 邏輯（pending 藏 / next 顯示 --song-ink）。配色走 data-midi。
  */
-function limbIconClass(midi) {
+function limbIconClass(midi, limbMode) {
+  if (limbMode === "off") return "limb-both";
+  if (limbMode === "allKnee") return "limb-foot";
   return midiRequiresKnee(midi) ? "limb-foot" : "limb-hand";
 }
 
 const $ = (id) => document.getElementById(id);
 
-export function createSongUI() {
+export function createSongUI({ getLimbMode } = {}) {
   const el = {
     libBtn: $("songLibBtn"),
     libPanel: $("songLibPanel"),
@@ -395,7 +398,8 @@ export function createSongUI() {
         node.style.left = `${((o.time - startMs) / spanMs) * 100}%`;
         // 手 / 腳 圖示取代原本的字母（K/S/H）。圖形走 ::before 遮罩，
         // 沿用 .song-note 的 color: transparent 機制隱藏 pending 顆。
-        node.classList.add(limbIconClass(o.midi));
+        // allKnee 模式時全顯示腳（見 limbIconClass）。
+        node.classList.add(limbIconClass(o.midi, getLimbMode?.() ?? "off"));
         noteFrag.appendChild(node);
         blockNoteNodes.push(node);
       }

@@ -24,9 +24,12 @@
  *
  * ═══ 部位配對閘門 ═══
  *
- * 除了上面兩個時間判斷，還有一個「部位」判斷也留在本層：
- * 開啟時大鼓（kick）限膝蓋、其餘限手部，部位不符不推進游標。
- * 同樣不下沉到 sequencer —— sequencer 連「打擊來自哪個部位」都不該知道。
+ * 除了上面兩個時間判斷，還有一個「部位」判斷也留在本層。依 limbMode：
+ *   "off"      不配對，任何部位都推進；
+ *   "standard" 大鼓（kick）限膝蓋、其餘限手部；
+ *   "allKnee"  全部音符都限膝蓋。
+ * 部位不符不推進游標。同樣不下沉到 sequencer —— sequencer 連「打擊來自哪個
+ * 部位」都不該知道。
  *
  * ═══ 已知瑕疵（本版接受）═══
  *
@@ -45,7 +48,7 @@ import { midiRequiresKnee } from "../audioEngine.js";
  * @param {Function} deps.freePlayZone   原本的 playZone，自由模式用
  * @param {Object}   deps.songUI         歌曲模式的 UI 更新介面
  * @param {Function} deps.getTransport   取得當前 active transport
- * @param {Function} [deps.getStrictMatch] 是否啟用「部位配對」（預設視為開啟）
+ * @param {Function} [deps.getLimbMode] 取得部位配對模式："off"｜"standard"｜"allKnee"（預設 "off"）
  */
 export function createHitRouter({
   session,
@@ -53,7 +56,7 @@ export function createHitRouter({
   freePlayZone,
   songUI,
   getTransport,
-  getStrictMatch,
+  getLimbMode,
 }) {
   return {
     /**
@@ -113,21 +116,25 @@ export function createHitRouter({
 
       // ── 部位配對閘門 ───────────────────────────────────────────────────
       //
-      // 讓身體打擊與鼓組物理對應：大鼓（kick）限膝蓋（heel），
-      // 其餘音（snare / hihat）限手部（front）。部位不符就不推進游標，
-      // 只發輕的節拍器提示音 —— 語意與前奏閘門一致：「有反應，但不算數」。
+      // 讓身體打擊與鼓組物理對應。依 limbMode 決定「下一顆該用膝蓋還是手」：
+      //   standard → 大鼓（kick）限膝蓋（heel），其餘限手部（front）
+      //   allKnee  → 全部音符都限膝蓋（heel）
+      // 部位不符就不推進游標，只發輕的節拍器提示音 —— 語意與前奏閘門一致：
+      // 「有反應，但不算數」。
       //
       // ⚠ 必須在 syncBlock 之後 peek —— 對齊前的游標可能指向錯的一顆，
       //   會依「不該偵測的音」去比對部位。
       // ⚠ 判斷用 peek 不推進；真正推進交給下方的 sequencer.hit()，
       //   sequencer 依舊完全不看部位、不看時間。
-      const strict = getStrictMatch ? getStrictMatch() : true;
-      if (strict) {
+      const limbMode = getLimbMode ? getLimbMode() : "off";
+      if (limbMode !== "off") {
         const next = sequencer.peek(1)[0];
         // next 不存在代表譜面已打完，交給 hit() 回報 exhausted，不在此攔。
         if (next) {
           const isKneeHit = zoneId === "heel";
-          if (midiRequiresKnee(next.midi) !== isKneeHit) {
+          const requireKnee =
+            limbMode === "allKnee" ? true : midiRequiresKnee(next.midi);
+          if (requireKnee !== isKneeHit) {
             audio.scheduleCue(audio.now() + 0.001, {
               id: TUNING.CUE_SAMPLE_ID_NORMAL,
               gain: TUNING.PREROLL_CUE_GAIN,

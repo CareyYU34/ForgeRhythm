@@ -1501,6 +1501,36 @@ body {
   --limb-src: url("assets/icons/limb-foot.png");
 }
 
+/* off（不配對）模式：手+腳並列，表示「任一部位皆可」，不暗示特定部位。
+   ::before=手、::after=腳，兩者都是 .song-note 的 flex item → 並排置中；
+   同樣用 background-color: currentColor，沿用 color 藏顯邏輯（pending 藏 /
+   next 墨色 / soon 鼓色）。並排較窄，故單顆尺寸比單圖示（1.7em）小一些。 */
+.song-note.limb-both {
+  gap: 0.08em;
+}
+.song-note.limb-both::before,
+.song-note.limb-both::after {
+  content: "";
+  display: block;
+  width: 0.82em;
+  height: 1.15em;
+  background-color: currentColor;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+.song-note.limb-both::before {
+  -webkit-mask-image: url("assets/icons/limb-hand.png");
+  mask-image: url("assets/icons/limb-hand.png");
+}
+.song-note.limb-both::after {
+  -webkit-mask-image: url("assets/icons/limb-foot.png");
+  mask-image: url("assets/icons/limb-foot.png");
+}
+
 /* 已經過去的音符。縮到最小 + 壓暗，成為節奏軌跡：
    看得出剛才打過的節奏形狀，但不與前方競爭注意力。 */
 .song-note[data-state="done"] {

@@ -160,9 +160,11 @@ const state = {
   stream: null,
   poseLandmarker: null,
   outputGain: 7, // 預設輸出音量，範圍 0-10，對應 audio engine 中 0-1 的增益值
-  // 歌曲模式「部位配對」：大鼓限膝蓋、其餘限手部。預設關閉；
-  // 關閉即「任何部位都推進下一顆」（不要求手/腳對應）。開啟才做嚴格配對。僅影響歌曲模式。
-  strictLimbMatch: false,
+  // 歌曲模式「部位配對」模式（僅影響歌曲模式）：
+  //   "off"      預設 —— 任何部位都推進下一顆（不要求手/腳對應）
+  //   "standard" 大鼓限膝蓋、其餘限手部
+  //   "allKnee"  全部音符都限膝蓋
+  limbMode: "off",
   // 歌曲模式難度：「basic」預設（四分，只吃四分位置音符）／
   // 「advanced」進階（八分，吃全部音符）。於載入譜面時套用，
   // 播放中切換需重新選歌才生效。
@@ -199,7 +201,10 @@ const monitor = createAdaptiveMonitor({ state });
 // ⚠ 建立順序：songUI → session → router，且必須在 createPredictWebcam 之前，
 //   因為 router.route 要當作 playZone 參數注入。
 
-const songUI = createSongUI();
+const songUI = createSongUI({
+  // 音符圖示需知道當前部位配對模式：allKnee 時全顯示腳
+  getLimbMode: () => state.limbMode,
+});
 
 const songSession = createSongSession({
   state,
@@ -216,8 +221,8 @@ const hitRouter = createHitRouter({
   freePlayZone: playZone, // 自由模式仍走原本的 zoneSound 查表
   songUI,
   getTransport: getActiveTransport,
-  // 讀取當下設定（開關可在遊玩中切換，故用 getter 而非快照）
-  getStrictMatch: () => state.strictLimbMatch,
+  // 讀取當下設定（可在遊玩中切換，故用 getter 而非快照）
+  getLimbMode: () => state.limbMode,
 });
 
 const predictWebcam = createPredictWebcam({
@@ -373,7 +378,7 @@ async function bootstrap() {
     panelEl: settingsPanel,
     outputGain: state.outputGain,
     visibilityThreshold: state.visibilityThreshold,
-    strictLimbMatch: state.strictLimbMatch,
+    limbMode: state.limbMode,
     advancedDifficulty: state.songDifficulty === "advanced",
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
     showPFOverlay: state.showPFOverlay,
@@ -381,8 +386,8 @@ async function bootstrap() {
       state.outputGain = value;
       setOutputVolume(value);
     },
-    onStrictLimbMatchChange: (value) => {
-      state.strictLimbMatch = value;
+    onLimbModeChange: (value) => {
+      state.limbMode = value;
     },
     // 難度切換於「下次載入譜面」時生效（重新選歌）。
     onAdvancedDifficultyChange: (value) => {
