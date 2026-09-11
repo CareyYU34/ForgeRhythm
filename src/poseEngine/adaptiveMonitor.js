@@ -81,10 +81,10 @@ const MONITOR_TUNING = {
   // 偵測「有下擊、谷底落在 PF_HIT 之上一點（差一點就中）」，累積數次後把 PF_HIT
   // 往上推到使用者最接近的谷底，讓同樣力道下一次能觸發。降回真實位置由成功命中
   // 的 7 格中位數負責（見 applyPFHitUpdate），兩者一推一拉自然收斂。
-  HAND_NM_BAND: 1.5, // near-miss 上界 = PF_HIT × 此值（谷底落在 (PF_HIT, 上界] 算差一點）
+  HAND_NM_MAX_GAP: 0.2, // 差點就中：谷底 − PF_HIT ≤ 此值才算（絕對差，與 PF_HIT 無關）
   HAND_NM_MIN_DEPTH: 0.15, // 該次下擊需有此深度（peak−谷底）才算真攻擊，濾除懸停抖動
   HAND_NM_REVERSAL_DELTA: 0.03, // 谷底回升超過此量才確認一次下擊結束（濾單幀跳點）
-  HAND_NM_COUNT: 3, // 累積幾次 near-miss 才上調
+  HAND_NM_COUNT: 2, // 累積幾次 near-miss 才上調
   HAND_NM_COOLDOWN_MS: 3000, // 兩次上調間的冷卻
   HAND_NM_MARGIN: 1.05, // 上調目標 = 最接近谷底 × 此值（略高於谷底，確保能觸發）
 
@@ -614,11 +614,9 @@ export function createAdaptiveMonitor({ state }) {
       return;
     }
 
-    // near-miss 上界：谷底落在 (PF_HIT, armLevel] 才算「差一點」；不超過 0.3
-    const armLevel = Math.min(
-      MONITOR_TUNING.TROUGH_MAX_PF,
-      PF_HIT * MONITOR_TUNING.HAND_NM_BAND,
-    );
+    // 差點就中：谷底與 PF_HIT 的「絕對差」≤ HAND_NM_MAX_GAP 才算。
+    // armLevel = 該差帶的上緣（PF_HIT + 最大差），手需抬到它之上才武裝。
+    const armLevel = PF_HIT + MONITOR_TUNING.HAND_NM_MAX_GAP;
 
     // 抬手越過 armLevel 才武裝一次，開始追這一次下擊。
     // 必須 !armed 才武裝：否則 PF 高於 armLevel 的每一幀都會重置 peak/strokeMin，
@@ -652,7 +650,7 @@ export function createAdaptiveMonitor({ state }) {
       const tt = troughTrackers[zoneKey];
       if (tt) tt.canHitTrueSinceMs = null;
 
-      // near-miss：谷底落在 (PF_HIT, armLevel]（差一點就中）
+      // near-miss：谷底在 PF_HIT 之上、且差距 ≤ HAND_NM_MAX_GAP（bottom ≤ armLevel）
       if (bottom > PF_HIT && bottom <= armLevel) {
         nm.nearMissCount += 1;
         if (bottom < nm.bestMissMin) nm.bestMissMin = bottom;
