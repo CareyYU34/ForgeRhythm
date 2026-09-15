@@ -33,11 +33,15 @@ export async function startWebcam({
   syncCanvas,
   initAudio,
 }) {
+  // ③ 效能優化：降低送進模型的輸入解析度。MediaPipe 內部會縮圖，但每幀「上傳 +
+  //    縮放」的成本與來源像素數成正比；640×360 的像素量約為 1280×720 的 1/4，能明顯
+  //    減輕低階機（尤其 WASM／CPU delegate 路徑）的前處理負擔，對大腿線／膝蓋這類粗
+  //    動作判斷幾乎無影響。詳見 poseLandmarker.js 頂部的效能說明（①②③ 與 todo ④⑤）。
   state.stream = await navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: "user",
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { ideal: 640 },
+      height: { ideal: 360 },
       aspectRatio: 16 / 9,
       frameRate: { ideal: 30, max: 30 },
     },
