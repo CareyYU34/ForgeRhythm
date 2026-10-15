@@ -11,6 +11,7 @@ import {
 } from "./math.js";
 import { calcKneeRisingAdj, getZoneParams } from "./calibrationProfile.js";
 import { createHitEffectManager } from "./hitEffects.js";
+import { perfLog } from "./perfLog.js";
 
 const POSE_CONNECTIONS = [
   [0, 1],
@@ -146,7 +147,9 @@ export function createInitialPoseState() {
       lastHitMs: -Infinity,
       zoneId: "heel",
     },
-    drawPoseDebugEnabled: false,
+    // 預設全身節點 + 隱藏鏡頭畫面（黑底），人體以節點呈現。
+    drawPoseDebugEnabled: true,
+    showCameraFeed: false,
     showPFOverlay: false,
 
     // ── 校準 profile（null = 未校準，不發聲）──
@@ -163,6 +166,7 @@ export function createInitialPoseState() {
 // ── 使用者偏好欄位：不應該在鏡頭重開時被重置 ──
 const USER_PREFERENCE_KEYS = [
   "drawPoseDebugEnabled",
+  "showCameraFeed",
   "visibilityThreshold",
   "calibrationProfile",
   "showPFOverlay",
@@ -208,8 +212,7 @@ function pickPFColor(pf, profile, side, zone) {
   const params = zone ? getZoneParamsIfAvailable(profile, side, zone) : null;
   if (!params) return "#fff";
   if (pf < params.PF_HIT) return "#ff4d4d"; // 打擊區（紅）
-  if (pf < params.PF_RELEASE) return "#ffcc33"; // 過渡區（黃）
-  return "#4dff88"; // 釋放區（綠）
+  return "#4dff88"; // 武裝區（綠）：PF 回到 PF_HIT 之上即重新武裝
 }
 
 // 安全地取得 zone 參數，沒有就回 null（避免 import 再一次）
@@ -425,6 +428,22 @@ export function createPredictWebcam({
   hitEffectManager,
 }) {
   const _fx = hitEffectManager ?? createHitEffectManager();
+
+  // ── 診斷：相機影格的拍攝時間（只在本地端掛，線上零開銷）──
+  // requestVideoFrameCallback 在同一幀的 rAF 之前觸發，所以 pose loop 讀到的
+  // _vf.last 就是當下 video.currentTime 那一格。captureTime 瀏覽器不一定提供（null）。
+  const _vf = { last: null };
+  if (
+    perfLog.isLocal() &&
+    typeof video.requestVideoFrameCallback === "function"
+  ) {
+    const onVideoFrame = (_now, meta) => {
+      _vf.last = meta;
+      video.requestVideoFrameCallback(onVideoFrame);
+    };
+    video.requestVideoFrameCallback(onVideoFrame);
+  }
+
   async function predictWebcam() {
     const poseLandmarker = getPoseLandmarker();
     if (!poseLandmarker) return;
@@ -440,6 +459,9 @@ export function createPredictWebcam({
     if (videoTimeSec !== state.lastVideoTime) {
       state.lastVideoTime = video.currentTime;
       poseLandmarker.detectForVideo(video, webTimeMs, (result) => {
+        // 診斷用時間點：推論完成、該格相機拍攝時間（perfLog 延遲時間軸）
+        const detEndMs = performance.now();
+        const capT = _vf.last?.captureTime ?? null;
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (result.landmarks.length === 0) return;
@@ -590,7 +612,7 @@ export function createPredictWebcam({
 
           // ── 膝蓋上升補償量（每幀計算，用平滑後的 knee y）──
           // 提膝時 emaKnee.y < kneeBaseline.y，calcKneeRisingAdj 回傳正值。
-          // 這個補償量會同步疊加到 PF_HIT 和 PF_RELEASE，
+          // 這個補償量疊加到 PF_HIT（同時也是重新武裝線），
           // 讓大腿線旋轉造成的 PF 幾何漂移無法穿越門檻，防止誤觸發。
           const leftKneeAdj = calcKneeRisingAdj(
             profile,
@@ -603,9 +625,8 @@ export function createPredictWebcam({
             state.emaRightKnee?.y ?? rightKnee.y,
           );
 
-          // 註：釋放判斷（PF > PF_RELEASE → 重新武裝）已完全內建在
-          // monitoringTriggerConditions 中，這裡不再需要外層的 release 分支。
-          // 原本那段的職責是「清空手部 history + 解鎖方向」，兩者都已不存在。
+          // 註：重新武裝（PF > PF_HIT）與下擊段峰值速度追蹤都內建在
+          // monitoringTriggerConditions 中，這裡只負責餵門檻與單幀手速。
 
           // ── 右手：動態門檻 hit 判斷（疊加膝蓋補償）──
           const rightParams = getZoneParams(profile, "right", HAND_ZONE);
@@ -614,7 +635,6 @@ export function createPredictWebcam({
               state.rightState,
               state.rightThighCordon,
               rightParams.PF_HIT + rightKneeAdj, // ← 提膝時門檻跟著升高
-              rightParams.PF_RELEASE + rightKneeAdj, // ← 確保 release 條件一致
               webTimeMs,
               rightParams.COOLDOWN_MS,
               rightHandSpeed,
@@ -629,7 +649,6 @@ export function createPredictWebcam({
               state.leftState,
               state.leftThighCordon,
               leftParams.PF_HIT + leftKneeAdj, // ← 提膝時門檻跟著升高
-              leftParams.PF_RELEASE + leftKneeAdj, // ← 確保 release 條件一致
               webTimeMs,
               leftParams.COOLDOWN_MS,
               leftHandSpeed,
@@ -643,12 +662,16 @@ export function createPredictWebcam({
           const leftKneeMetrics = summarizeKneeMotion(state.leftKneeHistory);
           const rightKneeMetrics = summarizeKneeMotion(state.rightKneeHistory);
 
+          // ⚠ 提到判斷之前取好，diagnostics 也要記這份「當下的膝蓋標準」。
+          const leftKneeThr = getKneeThresholds(profile, "left");
+          const rightKneeThr = getKneeThresholds(profile, "right");
+
           if (leftKneeMetrics) {
             state.leftKneeState = monitoringKneeKickConditions(
               state.leftKneeState,
               leftKneeMetrics,
               webTimeMs,
-              getKneeThresholds(profile, "left"),
+              leftKneeThr,
             );
           }
 
@@ -657,68 +680,160 @@ export function createPredictWebcam({
               state.rightKneeState,
               rightKneeMetrics,
               webTimeMs,
-              getKneeThresholds(profile, "right"),
+              rightKneeThr,
             );
+          }
+
+          // ── 診斷紀錄（本地端、演奏中才收）──
+          // 放在本區塊末端，才拿得到本幀計算出的門檻與膝蓋補償量。
+          if (perfLog.isActive()) {
+            const r2 = (v) => (v == null ? null : +v.toFixed(4));
+
+            // 觸發標準參考（靜態門檻，只記一次）。動態門檻（會被 adaptiveMonitor
+            // 漂移的：手 PF_HIT、膝 windowDropHit/Release）逐幀記在下面。
+            if (perfLog.needsStandards()) {
+              const handStd = (p) =>
+                p
+                  ? {
+                      PF_HIT: p.PF_HIT,
+                      SPEED_HIT: p.SPEED_HIT,
+                      COOLDOWN_MS: p.COOLDOWN_MS,
+                    }
+                  : null;
+              perfLog.setStandards({
+                note: "手 pfHit 逐幀記（含提膝補償，同時是重新武裝線）；手速門檻比對下擊段峰值 spPk；膝 kDropHit/kDropRel 逐幀記。其餘為靜態標準。",
+                hand: { left: handStd(leftParams), right: handStd(rightParams) },
+                knee: { left: leftKneeThr, right: rightKneeThr },
+              });
+            }
+
+            perfLog.frame({
+              t: Math.round(webTimeMs),
+              det: Math.round(detEndMs - webTimeMs), // 推論耗時（ms）
+              age: capT != null ? Math.round(detEndMs - capT) : null, // 相機拍到 → 推論完成（ms）
+
+              // ── 手：實測 vs 當下門檻 ──
+              pfL: r2(state.leftThighCordon?.PF),
+              pfR: r2(state.rightThighCordon?.PF),
+              spL: r2(leftHandSpeed),
+              spR: r2(rightHandSpeed),
+              spPkL: r2(state.leftState?.strokeSpeedMax),
+              spPkR: r2(state.rightState?.strokeSpeedMax),
+              armL: !!state.leftState?.canHit,
+              armR: !!state.rightState?.canHit,
+              pfHitL: leftParams ? r2(leftParams.PF_HIT + leftKneeAdj) : null,
+              pfHitR: rightParams ? r2(rightParams.PF_HIT + rightKneeAdj) : null,
+              spHitL: leftParams ? leftParams.SPEED_HIT : null,
+              spHitR: rightParams ? rightParams.SPEED_HIT : null,
+              kAdjL: r2(leftKneeAdj),
+              kAdjR: r2(rightKneeAdj),
+
+              // ── 膝：實測（湊齊 conditions.js 比對的所有量）──
+              kneeDyL: r2(leftKneeMetrics?.windowDy),
+              kneeDyR: r2(rightKneeMetrics?.windowDy),
+              kneeSpL: r2(leftKneeMetrics?.avgDownSpeed),
+              kneeSpR: r2(rightKneeMetrics?.avgDownSpeed),
+              kneePkL: r2(leftKneeMetrics?.maxDownSpeed),
+              kneePkR: r2(rightKneeMetrics?.maxDownSpeed),
+              kneeDxL: r2(leftKneeMetrics?.windowDx),
+              kneeDxR: r2(rightKneeMetrics?.windowDx),
+              kneeXyL: r2(leftKneeMetrics?.xyRatio),
+              kneeXyR: r2(rightKneeMetrics?.xyRatio),
+              kneeDfrL: r2(leftKneeMetrics?.downFrameRatio),
+              kneeDfrR: r2(rightKneeMetrics?.downFrameRatio),
+
+              // ── 膝：動態門檻（adaptiveMonitor 會漂移）+ 武裝狀態 ──
+              kDropHitL: r2(leftKneeThr?.windowDropHit),
+              kDropHitR: r2(rightKneeThr?.windowDropHit),
+              kDropRelL: r2(leftKneeThr?.windowDropRelease),
+              kDropRelR: r2(rightKneeThr?.windowDropRelease),
+              kArmL: !!state.leftKneeState?.canHit,
+              kArmR: !!state.rightKneeState?.canHit,
+            });
           }
         }
 
         // 未校準時：不執行手部 / 膝蓋打擊偵測，不發聲
+        // ── 打擊派發：記錄 → 發聲 → 特效 ──
+        // ⚠ perfLog.hit 必須在 playZone 之前：audioEngine 在 playZone 內呼叫
+        //   perfLog.noteSound，只有「派發期」（hit → endDispatch）才會掛到這一擊。
+        const animTimings = []; // 本幀有特效的打擊紀錄，畫完後補上動畫時機
+        const dispatchHit = (side, zoneId, extra, timingExtra, pushFx) => {
+          const rec = perfLog.isActive()
+            ? perfLog.hit({
+                side,
+                zone: zoneId,
+                t: Math.round(webTimeMs),
+                ...extra,
+                timing: {
+                  capT,
+                  frameT: webTimeMs,
+                  detEndT: detEndMs,
+                  trigT: performance.now(),
+                  ...timingExtra,
+                },
+              })
+            : null;
+          playZone(side, zoneId, zoneSound);
+          perfLog.endDispatch();
+          if (zoneSound[`${side}_${zoneId}`] !== "none" && pushFx() && rec) {
+            animTimings.push(rec.timing);
+          }
+        };
+
         // 手部命中：觸發區固定為大腿正面。
-        if (state.leftState.didHit) {
-          playZone("left", HAND_ZONE, zoneSound);
-          if (zoneSound[`left_${HAND_ZONE}`] !== "none") {
-            _fx.pushHandHit({
-              side: "left",
-              zone: HAND_ZONE,
-              hip: pickedLeftHand[0],
-              hand: pickedLeftHand[1],
-              knee: pickedLeftHand[2],
-              strength: Math.min(1, leftHandSpeed * 2),
-              getVideoDrawRect,
-            });
-          }
+        for (const [side, handState, cordon, picked] of [
+          ["left", state.leftState, state.leftThighCordon, pickedLeftHand],
+          ["right", state.rightState, state.rightThighCordon, pickedRightHand],
+        ]) {
+          if (!handState.didHit) continue;
+          const handSpeed = side === "left" ? leftHandSpeed : rightHandSpeed;
+          dispatchHit(
+            side,
+            HAND_ZONE,
+            {
+              pf: cordon?.PF ?? null,
+              speed: +(handState.hitStrokeSpeed ?? 0).toFixed(4), // 下擊段峰值（= 與 SPEED_HIT 比對的值）
+            },
+            { crossT: handState.hitCrossMs ?? null, gapMs: handState.hitGapMs ?? null },
+            () =>
+              _fx.pushHandHit({
+                side,
+                zone: HAND_ZONE,
+                hip: picked[0],
+                hand: picked[1],
+                knee: picked[2],
+                strength: Math.min(1, handSpeed * 2),
+                getVideoDrawRect,
+              }),
+          );
         }
 
-        if (state.rightState.didHit) {
-          playZone("right", HAND_ZONE, zoneSound);
-          if (zoneSound[`right_${HAND_ZONE}`] !== "none") {
-            _fx.pushHandHit({
-              side: "right",
-              zone: HAND_ZONE,
-              hip: pickedRightHand[0],
-              hand: pickedRightHand[1],
-              knee: pickedRightHand[2],
-              strength: Math.min(1, rightHandSpeed * 2),
-              getVideoDrawRect,
-            });
-          }
-        }
-
-        if (state.leftKneeState.didHit) {
-          playZone("left", state.leftKneeState.zoneId, zoneSound);
-          if (zoneSound[`left_${state.leftKneeState.zoneId}`] !== "none") {
+        for (const [side, kneeState, knee] of [
+          ["left", state.leftKneeState, leftKnee],
+          ["right", state.rightKneeState, rightKnee],
+        ]) {
+          if (!kneeState.didHit) continue;
+          dispatchHit(side, kneeState.zoneId, {}, {}, () =>
             _fx.pushKneeHit({
-              side: "left",
-              knee: leftKnee,
+              side,
+              knee,
               strength: 0.85,
               getVideoDrawRect,
-            });
-          }
-        }
-
-        if (state.rightKneeState.didHit) {
-          playZone("right", state.rightKneeState.zoneId, zoneSound);
-          if (zoneSound[`right_${state.rightKneeState.zoneId}`] !== "none") {
-            _fx.pushKneeHit({
-              side: "right",
-              knee: rightKnee,
-              strength: 0.85,
-              getVideoDrawRect,
-            });
-          }
+            }),
+          );
         }
 
         _fx.draw(canvasCtx, webTimeMs);
+
+        // 動畫時機：畫進 canvas 的時間 + 下一個 rAF 時間戳（≈ 這一幀被呈現到螢幕）
+        if (animTimings.length) {
+          const drawnT = performance.now();
+          for (const tm of animTimings) tm.animDrawT = drawnT;
+          requestAnimationFrame((ts) => {
+            for (const tm of animTimings) tm.animShowT = ts;
+          });
+        }
 
         state.prevLeftKnee = leftKnee;
         state.prevRightKnee = rightKnee;

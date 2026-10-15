@@ -83,7 +83,15 @@ export function createSongUI({ getLimbMode } = {}) {
     cursorText: $("songCursorText"),
     cursorWrap: $("songCursorWrap"),
     waitText: $("songWaitText"),
+
+    // ── 分部模式 ──
+    partOverlay: $("partOverlay"),
+    partGrid: $("partGrid"),
+    partLabel: $("songPartLabel"),
   };
+
+  /** 分部模式：版面切換前的歌名，setPartLabel 用它拼「歌名 · 你打：X」 */
+  let partBaseTitle = "";
 
   // ── 倒數狀態 ──
   let cues = [];
@@ -355,7 +363,13 @@ export function createSongUI({ getLimbMode } = {}) {
       // ⚠ offsetWidth 是強制回流的讀取，必須在任何 replaceChildren 之前，
       //   否則同一幀內 write-after-read 會讓瀏覽器 layout 兩次。
       //   每次換塊才發生（約 6 秒一次），不在打擊熱路徑上。
-      const blockWidthPx = el.block ? el.block.offsetWidth : 0;
+      // ⚠ 量 blockNotes（內軌寬），不是 block —— 音符定位在左右內縮的 track
+      //   座標空間裡，密度的像素換算要用實際承載音符的寬度才準。
+      const blockWidthPx = el.blockNotes
+        ? el.blockNotes.offsetWidth
+        : el.block
+          ? el.block.offsetWidth
+          : 0;
 
       // ── 拍線 ──
       const beats = barGrid.getBeatsPerBlock();
@@ -490,6 +504,94 @@ export function createSongUI({ getLimbMode } = {}) {
 
     showRibbonPhase() {
       el.ribbonRow?.classList.remove("is-hidden");
+    },
+
+    // ═══ 分部模式 ═══════════════════════════════════════════════════════
+    //
+    // 與 enterSongLayout 的差異：沒有影片，songVideo 一律隱藏；控制列
+    // （play/pause/seek/音量）仍顯示，操作的是 clockTransport 與背景匯流排。
+
+    enterPartLayout(title) {
+      closeLibrary();
+      partBaseTitle = title ?? "";
+      el.ytPanel?.classList.remove("is-hidden");
+      el.playerHost?.classList.add("is-hidden");
+      // ⚠ 分部模式沒有影片，songVideo 保持隱藏（與 enterSongLayout 相反）
+      el.video?.classList.add("is-hidden");
+      el.exitBtn?.classList.remove("is-hidden");
+      el.hud?.classList.remove("is-hidden");
+      if (el.title) {
+        el.title.textContent = partBaseTitle;
+        el.title.classList.remove("is-hidden");
+      }
+      if (el.overlayPlay) el.overlayPlay.style.display = "none";
+    },
+
+    exitPartLayout() {
+      el.hud?.classList.add("is-hidden");
+      el.exitBtn?.classList.add("is-hidden");
+      el.title?.classList.add("is-hidden");
+      el.playerHost?.classList.remove("is-hidden");
+      el.ytPanel?.classList.add("is-hidden");
+      if (el.overlayPlay) el.overlayPlay.style.display = "";
+      if (el.partLabel) el.partLabel.classList.add("is-hidden");
+
+      hideCountdown();
+      partBaseTitle = "";
+      cues = [];
+      firstOnsetMs = Infinity;
+      renderedBlockIdx = null;
+      blockNoteNodes = [];
+      lastCursorPainted = -1;
+    },
+
+    /**
+     * 分部選單。parts = [{midi,name,count,playable}]。
+     * onPick(midi) 於使用者點選可選分部時呼叫。
+     */
+    showPartPicker(parts, onPick) {
+      if (!el.partOverlay || !el.partGrid) return;
+      el.partGrid.replaceChildren();
+
+      for (const p of parts) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "part-pick-btn";
+        btn.disabled = !p.playable;
+
+        const name = document.createElement("span");
+        name.className = "part-pick-name";
+        name.textContent = p.name;
+
+        const sub = document.createElement("span");
+        sub.className = "part-pick-sub";
+        sub.textContent = p.playable ? `${p.count} 顆` : "無對應音色";
+
+        btn.append(name, sub);
+        if (p.playable) {
+          btn.addEventListener("click", () => onPick(p.midi));
+        }
+        el.partGrid.appendChild(btn);
+      }
+
+      el.partOverlay.classList.remove("is-hidden");
+    },
+
+    hidePartPicker() {
+      el.partOverlay?.classList.add("is-hidden");
+    },
+
+    /** 顯示「歌名 · 你打：X」 */
+    setPartLabel(name) {
+      if (el.title) {
+        el.title.textContent = name
+          ? `${partBaseTitle}　你打：${name}`
+          : partBaseTitle;
+      }
+      if (el.partLabel) {
+        el.partLabel.textContent = name ? `你打：${name}` : "";
+        el.partLabel.classList.toggle("is-hidden", !name);
+      }
     },
   };
 }

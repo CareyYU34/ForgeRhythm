@@ -606,6 +606,17 @@ body {
   border-radius: inherit;
 }
 
+/* 隱藏鏡頭畫面：黑底 + 只畫節點。
+   ⚠ 用 opacity 而非 display:none / visibility:hidden —— 後兩者可能讓瀏覽器停止
+     合成影片幀，requestVideoFrameCallback 不再觸發、detectForVideo 拿到舊畫面。 */
+.camera-frame.is-feed-hidden {
+  background: #000;
+}
+
+.camera-frame.is-feed-hidden #webcam {
+  opacity: 0;
+}
+
 
 #output {
   pointer-events: none;
@@ -1107,6 +1118,10 @@ body {
   --song-block-w: min(92%, 1040px);
   --song-block-h: 132px;
 
+  /* 內軌左右內縮量 = 半顆最大音符（next，= base）。
+     讓落在 left:0% / 100% 的音符（以中心定位）不被 overflow:hidden 截半。 */
+  --song-edge-pad: calc(var(--song-note-base) / 2);
+
   /* 所有音符的實體尺寸統一為 base，四個階級靠 transform scale 表現。
      見下方 .song-note 的說明。 */
   --song-note-base: 96px;
@@ -1413,6 +1428,16 @@ body {
   overflow: hidden;
 }
 
+/* 內軌：左右內縮半顆音符。grid / notes / head / rest 都相對它定位，
+   故 % 座標一致、對齊不變，只是整體往內收，邊緣音符不再被截半。 */
+.song-block-track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--song-edge-pad);
+  right: var(--song-edge-pad);
+}
+
 .song-block-grid,
 .song-block-notes {
   position: absolute;
@@ -1656,4 +1681,120 @@ body {
   .song-exit-btn {
     transition: none !important;
   }
+}
+/* =========================
+   Part mode（分部模式）
+   ── 分部選擇 overlay + 無影片版面的「你打：X」標籤 ──
+   ========================= */
+
+/* 分部選擇 overlay：沿用 calib-overlay 的遮罩風格，置中卡片 */
+.part-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border-radius: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.part-overlay.is-hidden { display: none !important; }
+
+.part-overlay-title {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 34px);
+  font-weight: 800;
+  color: #fff;
+}
+.part-overlay-sub {
+  margin: 0 0 12px;
+  font-size: clamp(13px, 2vw, 16px);
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+}
+
+.part-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.part-pick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.part-pick-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-2px);
+}
+.part-pick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.part-pick-name {
+  font-size: clamp(16px, 2.4vw, 20px);
+  font-weight: 700;
+}
+.part-pick-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* 無影片版面：空的影片區中央顯示「你打：X」 */
+.song-part-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 0 16px;
+  text-align: center;
+  font-size: clamp(20px, 4vw, 34px);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+.song-part-label.is-hidden { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .part-pick-btn { transition: none !important; }
+}
+
+/* 設定面板動作按鈕（匯出 log 等） */
+.settings-action-btn {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.settings-action-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.settings-action-btn:active {
+  transform: translateY(1px);
 }

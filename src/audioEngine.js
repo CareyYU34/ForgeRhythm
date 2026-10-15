@@ -1,3 +1,5 @@
+import { perfLog } from "./poseEngine/perfLog.js";
+
 export const SOUND_LIBRARY = [
   {
     id: "snare",
@@ -49,6 +51,32 @@ export const CUE_LIBRARY = [
   },
 ];
 
+/**
+ * 分部模式（partSession）背景用的額外鼓組取樣。
+ *
+ * ⚠ 絕對不可併入 SOUND_LIBRARY。
+ *   SOUND_LIBRARY 同時餵給自由模式的鼓組選單（bindSoundUI）。混進去會讓
+ *   這幾個「只給歌曲背景用」的音色出現在使用者的鼓組選項裡。
+ *
+ * ⚠ 但 buffer 與 SOUND_LIBRARY 共用同一個 buffers Map —— playMidi /
+ *   scheduleMidi 都靠 MIDI_TO_SOUND_ID → buffers 查表，兩者的 buffer
+ *   必須在同一個 map 才查得到（這點與 CUE_LIBRARY 的獨立 cueBuffers 不同：
+ *   引導音要與鼓組發聲路徑完全隔離，鼓組取樣則同屬一條發聲路徑）。
+ */
+export const SONG_DRUM_LIBRARY = [
+  { id: "rim", label: "Side Stick", url: "./assets/sounds/37_Rim Shot.wav" },
+  {
+    id: "pedalhat",
+    label: "Pedal Hi-Hat",
+    url: "./assets/sounds/44_Hi-Hat Pedal.wav",
+  },
+  {
+    id: "ride",
+    label: "Ride Cymbal",
+    url: "./assets/sounds/51_59_Ride Cymbal.wav",
+  },
+];
+
 // 手部觸發區固定為大腿正面；heel 由膝蓋踢擊觸發。
 export const ZONES = [
   { id: "front", label: "大腿正面" },
@@ -56,15 +84,19 @@ export const ZONES = [
 ];
 
 /**
- * MIDI 音高 → SOUND_LIBRARY 的 id。
+ * MIDI 音高 → 鼓組取樣 id（SOUND_LIBRARY 或 SONG_DRUM_LIBRARY 皆可）。
  *
- * 歌曲模式的 sequencer 回傳 MIDI 音高，需要這張表才能發聲。
- * 三個音高剛好對應既有的三個取樣，不需要新增檔案。
+ * 歌曲模式的 sequencer 與背景排程器都回傳 MIDI 音高，需要這張表才能發聲。
+ *   36/38/42 為原本的月亮 song mode 三音，走 SOUND_LIBRARY；
+ *   37/44/51 為分部模式（中南美）新增，走 SONG_DRUM_LIBRARY。
  */
 export const MIDI_TO_SOUND_ID = {
   36: "kick",
   38: "snare",
   42: "hihat",
+  37: "rim",
+  44: "pedalhat",
+  51: "ride",
 };
 
 /**
@@ -117,6 +149,16 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
   let cueGain = null;
   let cueBusGain = 1;
 
+  /**
+   * 背景分部匯流排（分部模式）。
+   *
+   * ⚠ 與 masterGain 分開，語意同 cueGain：背景是「系統在放伴奏」，
+   *   不該被使用者的打擊音量（state.outputGain → masterGain）牽動 ——
+   *   使用者把自己的打擊調小時，背景伴奏必須維持原音量。
+   */
+  let backingGain = null;
+  let backingBusGain = 1;
+
   let ready = false;
 
   /**
@@ -148,21 +190,61 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
       cueGain = audioCtx.createGain();
       cueGain.gain.value = cueBusGain;
       cueGain.connect(audioCtx.destination);
+
+      backingGain = audioCtx.createGain();
+      backingGain.gain.value = backingBusGain;
+      backingGain.connect(audioCtx.destination);
     }
 
     if (audioCtx.state === "suspended") {
       await audioCtx.resume().catch(() => {});
     }
 
-    // 鼓組與引導音平行載入，兩者皆完成才算就緒
+    // 鼓組（含分部模式的額外鼓組）與引導音平行載入，全部完成才算就緒。
+    // ⚠ SONG_DRUM_LIBRARY 與 soundLibrary 同載入 buffers（同一條發聲路徑），
+    //   但不進 SOUND_LIBRARY，故不會出現在自由模式的鼓組選單。
     await Promise.all([
       ...soundLibrary
         .filter((s) => s.url)
         .map((s) => loadInto(buffers, s.id, s.url)),
+      ...SONG_DRUM_LIBRARY.map((s) => loadInto(buffers, s.id, s.url)),
       ...CUE_LIBRARY.map((c) => loadInto(cueBuffers, c.id, c.url)),
     ]);
 
     ready = true;
+  }
+
+  /**
+   * 診斷：記下打擊聲「何時真正從喇叭出來」，掛到 perfLog 當前派發中的那一擊。
+   * 只在 perfLog 錄製中才計算；非打擊派發期（節拍器等）perfLog 會自己忽略。
+   *
+   *   outT    以 getOutputTimestamp() 換算：該 context 時刻對應的實際輸出時間
+   *   outEstT 呼叫時間 + baseLatency + outputLatency（瀏覽器不給 timestamp 時的備案）
+   *
+   * @param {string} kind  "zone" | "midi" | "cue"
+   * @param {number} when  src.start() 的 AudioContext 秒數
+   */
+  function noteHitSound(kind, when) {
+    if (!perfLog.isActive()) return;
+    const callT = performance.now();
+    const baseMs = (audioCtx.baseLatency ?? 0) * 1000;
+    const outMs = (audioCtx.outputLatency ?? 0) * 1000;
+    let outT = null;
+    const ts = audioCtx.getOutputTimestamp?.();
+    if (ts && ts.performanceTime > 0) {
+      // ⚠ start(t) 的 t 若已過去，實際在下一個 render quantum 才開始，取兩者較晚者
+      const startCtx = Math.max(when, audioCtx.currentTime);
+      outT = ts.performanceTime + (startCtx - ts.contextTime) * 1000;
+    }
+    perfLog.noteSound({
+      kind,
+      callT,
+      outT,
+      outEstT: callT + Math.max(0, (when - audioCtx.currentTime) * 1000) + baseMs + outMs,
+      baseLatencyMs: Math.round(baseMs * 10) / 10,
+      outputLatencyMs: Math.round(outMs * 10) / 10,
+      ctxState: audioCtx.state,
+    });
   }
 
   /** 排程節點的生命週期追蹤，供 cancelScheduled 使用 */
@@ -182,6 +264,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     src.buffer = buf;
     src.connect(masterGain);
     src.start(audioCtx.currentTime);
+    noteHitSound("zone", audioCtx.currentTime);
   }
 
   /**
@@ -210,7 +293,49 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     }
 
     src.start(audioCtx.currentTime);
+    noteHitSound("midi", audioCtx.currentTime);
     return true;
+  }
+
+  /**
+   * 依 MIDI 音高在絕對音訊時刻排程發聲（分部模式的背景伴奏用）。
+   *
+   * 與 playMidi 的差異：
+   *   - 走 backingGain 匯流排（不受使用者打擊音量牽動）。
+   *   - 在 when（AudioContext 絕對秒數）觸發，不是立即。
+   *   - ⚠ 必須 track() 進 pending，否則暫停 / seek 時 cancelScheduled
+   *     取消不到，背景會照原定時刻繼續響出來（與引導音同理）。
+   *
+   * ⚠ 過期（when < now）一律丟棄、不夾限。夾限會把過期音壓成立即發聲、
+   *   落在錯的拍點上 —— 與 scheduleCue 的取捨一致。
+   *
+   * @param {number} midi
+   * @param {number} when AudioContext 時間軸上的絕對秒數
+   * @param {number} [gain=1]
+   * @returns {AudioBufferSourceNode|null}
+   */
+  function scheduleMidi(midi, when, gain = 1) {
+    if (!audioCtx || !backingGain) return null;
+    const id = MIDI_TO_SOUND_ID[midi];
+    const buf = id ? buffers.get(id) : null;
+    if (!buf) return null;
+    if (when < audioCtx.currentTime) return null;
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+
+    if (gain === 1) {
+      src.connect(backingGain);
+    } else {
+      const g = audioCtx.createGain();
+      g.gain.value = gain;
+      src.connect(g);
+      g.connect(backingGain);
+    }
+
+    src.start(when);
+    track(src);
+    return src;
   }
 
   /**
@@ -250,6 +375,8 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     }
 
     src.start(when);
+    // 打擊路徑上的提示音（前奏期 / 部位不符）也記；HUD loop 排的節拍器不在派發期，perfLog 會忽略
+    noteHitSound("cue", when);
 
     // ⚠ 必須 track，否則 cancelScheduled 取消不到，
     //   暫停後引導音仍會照原定時刻響出來。
@@ -285,6 +412,12 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     if (cueGain) cueGain.gain.value = cueBusGain;
   }
 
+  /** 背景分部匯流排總增益。與 setOutputVolume / setCueVolume 完全獨立。 */
+  function setBackingVolume(gainValue = 1) {
+    backingBusGain = Math.max(0, gainValue);
+    if (backingGain) backingGain.gain.value = backingBusGain;
+  }
+
   /** 目前的 AudioContext 時間（秒） */
   function now() {
     return audioCtx ? audioCtx.currentTime : 0;
@@ -300,8 +433,10 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     setOutputVolume,
     // ── 歌曲模式 ──
     playMidi,
+    scheduleMidi,
     scheduleCue,
     setCueVolume,
+    setBackingVolume,
     cancelScheduled,
     now,
     isReady,

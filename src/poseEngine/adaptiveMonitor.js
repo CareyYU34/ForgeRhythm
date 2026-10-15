@@ -11,7 +11,7 @@
  *   4. Visibility 自適應：根據節點歷史可見度，動態調整全域 visibilityThreshold
  *   5. 手部 near-miss 升級：偵測「有下擊但差一點才觸發」，把 PF_HIT 往上推（只升不降），
  *      解開「力道到不了 PF_HIT → 沒有成功樣本 → PF_HIT 卡死打不出來」的死結。
- *      降回真實位置由成功命中的 7 格中位數負責（updateHandNearMiss / raiseHitFromNearMiss）
+ *      降回真實位置由成功命中的低谷中位數負責（updateHandNearMiss / raiseHitFromNearMiss）
  *
  * 設計原則：
  *   - 完全獨立於 poseLoop，只透過 state 共享資料
@@ -37,17 +37,21 @@
  *
  *   M1 循環式採樣  — 以 canHit false 期間為「谷底段」，取該段最小值為一個樣本。
  *                    此區間下限由人體幾何決定，與參數無關，回饋方向翻轉為負回饋。
- *   M2 有效性過濾  — PF > TROUGH_MAX_PF 的幀直接拒絕（不 clamp，避免製造假樣本）。
- *   M3 中位數估計  — 近 N 個循環最小值取中位數，具雙向移動能力且抗離群，
- *                    取代舊版的全域 running-min + 雙計時器重置。
- *   M4 變化率限制  — PF_HIT 每次更新至多變動 ±PF_HIT_MAX_STEP_RATIO，
- *                    使孤立異常樣本自動失效，且不需事先判斷「是否為異常」。
+ *   M2 有效性過濾  — （已移除固定 0.3 上界）移除 PF_RELEASE 後，canHit false 期間
+ *                    PF 必然 ≤ PF_HIT(+提膝補償)，循環本身即為天然上界；固定 0.3 會在
+ *                    PF_HIT > 0.3 時把所有樣本丟光，讓「降」完全失效。
+ *   M3 中位數估計  — 近 N 個循環最小值取中位數，抗離群；另有「變化偵測」：最新
+ *                    TROUGH_SHIFT_COUNT 個樣本同向偏離估計值時清掉舊樣本，快速跟上
+ *                    使用者找甜蜜位置的行為。
+ *   M4 變化率限制  — 樣本驅動的更新「只降不升」，且每次至多 −PF_HIT_MAX_STEP_RATIO。
+ *                    樣本恆 ≤ PF_HIT、K1=2，若允許上升會形成 troughPF ← PF_HIT 的
+ *                    正回饋；「升」只由 near-miss 升級器負責，兩條路徑分工不再互拉。
  *   M5 故障回退    — canHit 卡在 true 超過門檻 = 有動作但打不中，回退至 baseline；
  *                    時間窗內累犯達門檻則凍結該 zone 的自適應。
  */
 
 import { DEFAULT_CALIBRATION_PROFILE } from "./calibrationProfile.js";
-import { TUNING, computeReleaseFromHit } from "./calibrationProfile.js";
+import { TUNING } from "./calibrationProfile.js";
 
 // ─── 可調參數 ────────────────────────────────────────────────────────────────
 
@@ -57,18 +61,21 @@ const MONITOR_TUNING = {
   COLD_START_CHECK_INTERVAL: 100, // 每 100ms 檢查一次（ms）
 
   // PF 低谷追蹤 ── 循環式採樣（M1）
-  TROUGH_CYCLE_MIN_FRAMES: 3, // 循環有效幀數下限，低於則丟棄該循環
+  // 3 → 1：移除 PF_RELEASE 後循環只到手抬回 PF_HIT 之上，快速連打 + 低幀率時
+  // 常只有 1~2 幀；樣本只能讓 PF_HIT 下降且有中位數抗離群，單幀樣本可接受。
+  TROUGH_CYCLE_MIN_FRAMES: 1, // 循環有效幀數下限，低於則丟棄該循環
   TROUGH_CYCLE_MAX_MS: 5000, // 循環開啟過久時暫結並產出樣本（ms）
 
-  // PF 低谷追蹤 ── 樣本有效性（M2）
-  TROUGH_MAX_PF: 0.3, // 低谷候選的絕對上界，超出直接拒絕（非 clamp）
-
   // PF 低谷追蹤 ── 中位數估計器（M3）
-  TROUGH_SAMPLE_SIZE: 7, // 樣本環形 buffer 容量
+  TROUGH_SAMPLE_SIZE: 5, // 樣本環形 buffer 容量（7 → 5，反應更快）
   TROUGH_MIN_SAMPLES: 3, // 少於此數量不更新 PF_HIT
+  // 變化偵測：最新 N 個樣本「全部」同向偏離目前估計值超過此比例
+  // → 視為使用者換了打法，丟掉舊樣本只留這 N 個，中位數立即跟上。
+  TROUGH_SHIFT_COUNT: 3,
+  TROUGH_SHIFT_RATIO: 0.1,
 
-  // PF_HIT 變化率限制（M4）
-  PF_HIT_MAX_STEP_RATIO: 0.15, // 每次更新的最大變動比例
+  // PF_HIT 變化率限制（M4，只降不升）
+  PF_HIT_MAX_STEP_RATIO: 0.25, // 每次下降的最大比例（0.15 → 0.25）
   PF_HIT_MIN_ABS_STEP: 0.01, // 每次更新的最小絕對步長
 
   // 故障回退與升級凍結（M5）
@@ -80,7 +87,7 @@ const MONITOR_TUNING = {
   // 手部 near-miss 升級器（只升不降；讓「一直打不中」的死結能被解開）
   // 偵測「有下擊、谷底落在 PF_HIT 之上一點（差一點就中）」，累積數次後把 PF_HIT
   // 往上推到使用者最接近的谷底，讓同樣力道下一次能觸發。降回真實位置由成功命中
-  // 的 7 格中位數負責（見 applyPFHitUpdate），兩者一推一拉自然收斂。
+  // 的低谷中位數負責（見 applyPFHitUpdate，只降不升），兩者分工收斂。
   HAND_NM_MAX_GAP: 0.2, // 差點就中：谷底 − PF_HIT ≤ 此值才算（絕對差，與 PF_HIT 無關）
   HAND_NM_MIN_DEPTH: 0.15, // 該次下擊需有此深度（peak−谷底）才算真攻擊，濾除懸停抖動
   HAND_NM_REVERSAL_DELTA: 0.03, // 谷底回升超過此量才確認一次下擊結束（濾單幀跳點）
@@ -361,9 +368,7 @@ export function createAdaptiveMonitor({ state }) {
 
     const enoughFrames =
       tracker.cycleFrames >= MONITOR_TUNING.TROUGH_CYCLE_MIN_FRAMES;
-    const validMin =
-      Number.isFinite(tracker.cycleMin) &&
-      tracker.cycleMin <= MONITOR_TUNING.TROUGH_MAX_PF;
+    const validMin = Number.isFinite(tracker.cycleMin);
 
     if (enoughFrames && validMin) {
       emitTroughSample(zoneKey, tracker, tracker.cycleMin, provisional);
@@ -383,6 +388,24 @@ export function createAdaptiveMonitor({ state }) {
 
   function emitTroughSample(zoneKey, tracker, sample, provisional) {
     pushToBuffer(tracker.samples, sample, MONITOR_TUNING.TROUGH_SAMPLE_SIZE);
+
+    // ── 變化偵測：最新 N 個樣本同向偏離估計值 → 丟掉舊樣本 ──
+    // 中位數抗離群的代價是遲鈍（要過半樣本換掉才會動）；使用者在找甜蜜位置時
+    // 打法是「持續」改變，連續 N 個同向偏離即可與孤立離群區分。
+    const n = MONITOR_TUNING.TROUGH_SHIFT_COUNT;
+    if (tracker.samples.length > n) {
+      const recent = tracker.samples.slice(-n);
+      const est = tracker.troughPF;
+      const r = MONITOR_TUNING.TROUGH_SHIFT_RATIO;
+      const allLower = recent.every((v) => v < est * (1 - r));
+      const allHigher = recent.every((v) => v > est * (1 + r));
+      if (allLower || allHigher) {
+        tracker.samples = recent;
+        console.log(
+          `[adaptiveMonitor] ${zoneKey} 偵測到打法變化（${allLower ? "更深" : "更淺"}），清除舊樣本`,
+        );
+      }
+    }
 
     console.log(
       `[adaptiveMonitor] ${zoneKey} 樣本產出${provisional ? "（暫結）" : ""}: ` +
@@ -413,18 +436,16 @@ export function createAdaptiveMonitor({ state }) {
     if (prevCanHit && !canHit) {
       openCycle(tracker, nowMs);
     }
-    // false → true：手抬離大腿（PF > PF_RELEASE），關閉並產出樣本
+    // false → true：手抬回 PF_HIT 之上（重新武裝），關閉並產出樣本
     else if (!prevCanHit && canHit) {
       closeCycle(zoneKey, tracker, nowMs);
     }
 
     if (!tracker.cycleOpen) return;
 
-    // ── M2：僅有效幀計入（超界者拒絕，不 clamp）──
-    if (currentPF <= MONITOR_TUNING.TROUGH_MAX_PF) {
-      if (currentPF < tracker.cycleMin) tracker.cycleMin = currentPF;
-      tracker.cycleFrames += 1;
-    }
+    // canHit false 期間 PF 必然 ≤ PF_HIT(+提膝補償)，不需另設上界（見檔頭 M2）
+    if (currentPF < tracker.cycleMin) tracker.cycleMin = currentPF;
+    tracker.cycleFrames += 1;
 
     // ── 暫結：循環開啟過久（手長時間擱在大腿上）──
     if (nowMs - tracker.cycleStartMs > MONITOR_TUNING.TROUGH_CYCLE_MAX_MS) {
@@ -497,12 +518,12 @@ export function createAdaptiveMonitor({ state }) {
   }
 
   /**
-   * 更新單一 zone 的 PF_HIT / PF_RELEASE。
+   * 更新單一 zone 的 PF_HIT。
    * 事件驅動：僅在產出新樣本、reset() 或 M5 回退時呼叫，不再每幀執行。
    *
    * @param {string} zoneKey
    * @param {{ skipRateLimit?: boolean, prevTrough?: number }} [opts]
-   *        skipRateLimit — reset() 與 M5 回退屬「外部強制指定」，不受 M4 約束
+   *        skipRateLimit — reset() 與 M5 回退屬「外部強制指定」，不受 M4 約束（可升可降）
    */
   function applyPFHitUpdate(zoneKey, opts = {}) {
     if (!state.calibrationProfile) return;
@@ -532,14 +553,14 @@ export function createAdaptiveMonitor({ state }) {
     let limited = false;
 
     if (!opts.skipRateLimit) {
+      // 只降不升：樣本恆 ≤ PF_HIT，允許上升會形成正回饋（見檔頭 M4）
+      if (target >= prevPFHit) return;
+
       const maxStep = Math.max(
         Math.abs(prevPFHit) * MONITOR_TUNING.PF_HIT_MAX_STEP_RATIO,
         MONITOR_TUNING.PF_HIT_MIN_ABS_STEP,
       );
-      if (target > prevPFHit + maxStep) {
-        newPFHit = prevPFHit + maxStep;
-        limited = true;
-      } else if (target < prevPFHit - maxStep) {
+      if (target < prevPFHit - maxStep) {
         newPFHit = prevPFHit - maxStep;
         limited = true;
       }
@@ -549,13 +570,7 @@ export function createAdaptiveMonitor({ state }) {
 
     newPFHit = round4(newPFHit);
 
-    // PF_RELEASE 等比跟隨 PF_HIT，維持固定的遲滯比例。
-    // 使用與 calibrationProfile 相同的公式來源，避免兩邊漂移。
-    const newRelease = computeReleaseFromHit(newPFHit, peakPFMean);
-
-    if (current.PF_HIT === newPFHit && current.PF_RELEASE === newRelease) {
-      return;
-    }
+    if (current.PF_HIT === newPFHit) return;
 
     // 寫入（淺拷貝避免直接 mutate）
     state.calibrationProfile = {
@@ -565,7 +580,6 @@ export function createAdaptiveMonitor({ state }) {
         [direction]: {
           ...current,
           PF_HIT: newPFHit,
-          PF_RELEASE: newRelease,
         },
       },
     };
@@ -586,12 +600,12 @@ export function createAdaptiveMonitor({ state }) {
   // ── 手部 near-miss 升級（每幀呼叫）──
   //
   // 解「一直打不中」死結：canHit 只在成功命中時才 true→false，所以 miss 永遠不進
-  // 7 格；若使用者力道到不了 PF_HIT，就永遠沒有樣本、PF_HIT 卡死打不出來。此機制
+  // 樣本 buffer；若使用者力道到不了 PF_HIT，就永遠沒有樣本、PF_HIT 卡死打不出來。此機制
   // 偵測「有下擊但谷底落在 PF_HIT 之上一點」的 near-miss，累積數次後把 PF_HIT 往上
-  // 推到最接近的谷底（只升不降）。一旦推到能觸發，成功命中就會進 7 格，由中位數 +
-  // M4 限速把 PF_HIT 拉回真實位置（applyPFHitUpdate）。兩者一推一拉自然收斂。
+  // 推到最接近的谷底（只升不降）。一旦推到能觸發，成功命中就會進 buffer，由中位數 +
+  // M4（只降不升）把 PF_HIT 拉回真實位置（applyPFHitUpdate）。升降分工自然收斂。
   //
-  // ⚠ 不寫 troughPF、不進 7 格 —— 避免用 miss 谷底污染中位數（那正是舊 v3 壞掉的原因）。
+  // ⚠ 不寫 troughPF、不進 buffer —— 避免用 miss 谷底污染中位數（那正是舊 v3 壞掉的原因）。
 
   function updateHandNearMiss(zoneKey, rawPF, nowMs) {
     if (!state.calibrationProfile) return;
@@ -604,7 +618,7 @@ export function createAdaptiveMonitor({ state }) {
 
     const PF_HIT = zone.PF_HIT;
 
-    // 成功命中（canHit=false）：清空 miss streak（已能觸發，交回 7 格中位數處理）
+    // 成功命中（canHit=false）：清空 miss streak（已能觸發，交回低谷中位數處理）
     if (!readCanHit(zoneKey)) {
       nm.armed = false;
       nm.peakPF = 0;
@@ -669,7 +683,7 @@ export function createAdaptiveMonitor({ state }) {
   }
 
   // 把 PF_HIT 上調到「使用者最接近的谷底 × 邊際」，只升不降，以 peakCap 為上限。
-  // 僅改 PF_HIT / PF_RELEASE，不動 troughPF 與 7 格 buffer。
+  // 僅改 PF_HIT，不動 troughPF 與樣本 buffer。
 
   function raiseHitFromNearMiss(zoneKey, bestMissMin) {
     const { side, direction } = ZONE_MAP[zoneKey];
@@ -687,8 +701,6 @@ export function createAdaptiveMonitor({ state }) {
     const newPFHit = round4(Math.max(prevPFHit, target)); // 只升不降
     if (newPFHit === prevPFHit) return;
 
-    const newRelease = computeReleaseFromHit(newPFHit, peakPFMean);
-
     state.calibrationProfile = {
       ...state.calibrationProfile,
       [side]: {
@@ -696,7 +708,6 @@ export function createAdaptiveMonitor({ state }) {
         [direction]: {
           ...current,
           PF_HIT: newPFHit,
-          PF_RELEASE: newRelease,
         },
       },
     };

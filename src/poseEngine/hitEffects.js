@@ -250,11 +250,11 @@ export function createHitEffectManager() {
     strength,
     getVideoDrawRect,
   }) {
-    if (!hand) return;
+    if (!hand) return false;
     const rect = getVideoDrawRect();
     const handPx = toCanvas(hand, rect);
 
-    if (!isReasonableCanvasPx(handPx, rect)) return;
+    if (!isReasonableCanvasPx(handPx, rect)) return false;
 
     const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
     const colors = SIDE_COLORS[side] ?? SIDE_COLORS.right;
@@ -269,15 +269,16 @@ export function createHitEffectManager() {
       startMs: performance.now(),
       durationMs: HAND_DURATION_MS,
     });
+    return true; // 有特效（供 perfLog 記動畫時機）
   }
 
   function pushKneeHit({ side, knee, strength, getVideoDrawRect }) {
-    if (!knee) return;
+    if (!knee) return false;
     const rect = getVideoDrawRect();
     const cx = rect.x + knee.x * rect.width;
     const cy = rect.y + knee.y * rect.height;
 
-    if (!isReasonableCanvasPx({ x: cx, y: cy }, rect)) return;
+    if (!isReasonableCanvasPx({ x: cx, y: cy }, rect)) return false;
 
     const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
 
@@ -290,6 +291,7 @@ export function createHitEffectManager() {
       startMs: performance.now(),
       durationMs: KICK_DURATION_MS,
     });
+    return true;
   }
 
   function draw(ctx, nowMs) {

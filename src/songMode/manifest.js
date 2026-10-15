@@ -23,4 +23,24 @@ export const SONG_LIBRARY = [
     noteCount: 487,
     duration: "3:41",
   },
+  {
+    /**
+     * 分部模式（無影片）：使用者選一個鼓件自己打，背景播其餘分部。
+     * ⚠ mode:"part" 讓 main.js 分派到 partSession 而非 songSession。
+     */
+    id: "latin",
+    title: "中南美",
+    mode: "part",
+    chart: "./assets/songs/latin/chart.json",
+    /**
+     * 寫死進階（八分，吃全部音符）＝原本譜該怎麼樣就怎麼樣，不受設定面板影響。
+     * ⚠ main.js 選到帶 difficulty 的歌時，會把 state.songDifficulty 設成它、
+     *   並讓設定面板的「進階難度」按鈕跟著切換。
+     */
+    difficulty: "advanced",
+    cover: null,
+    bpm: 60,
+    noteCount: 471,
+    duration: "—",
+  },
 ];

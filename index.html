@@ -87,10 +87,15 @@
           <!-- 節拍格線：依時間定位，每小節整批換頁（L1） -->
           <div class="song-ribbon-row is-hidden" id="songRibbonRow">
             <div class="song-block" id="songBlock">
-              <div class="song-block-grid" id="songBlockGrid"></div>
-              <div class="song-block-notes" id="songBlockNotes"></div>
-              <p class="song-block-rest is-hidden" id="songBlockRest">休息</p>
-              <i class="song-block-head" id="songBlockHead"></i>
+              <!-- ⚠ 內軌左右內縮半顆音符，讓落在小節線（left:0%）上、
+                   以中心定位的音符不會被 .song-block 的 overflow:hidden 截半。
+                   grid / notes / head 全在同一個 track 座標空間內 → 對齊不變。 -->
+              <div class="song-block-track">
+                <div class="song-block-grid" id="songBlockGrid"></div>
+                <div class="song-block-notes" id="songBlockNotes"></div>
+                <p class="song-block-rest is-hidden" id="songBlockRest">休息</p>
+                <i class="song-block-head" id="songBlockHead"></i>
+              </div>
             </div>
           </div>
 
@@ -168,6 +173,14 @@
             <p class="calib-done-sub">系統已記住你的打擊習慣</p>
           </div>
         </div>
+
+        <!-- ══ 分部選擇 Overlay（分部模式）══
+             選歌後、開始前，讓使用者選一個鼓件自己打；其餘分部當背景。 -->
+        <div id="partOverlay" class="part-overlay is-hidden" aria-live="polite">
+          <p class="part-overlay-title">選一個分部來打</p>
+          <p class="part-overlay-sub">你選的分部會由你打擊發聲，其餘分部當背景伴奏</p>
+          <div class="part-grid" id="partGrid"></div>
+        </div>
       </div>
 
       <div id="ytPanel" class="player-card is-hidden">
@@ -184,6 +197,10 @@
           ></video>
 
           <span class="song-title is-hidden" id="songTitle"></span>
+
+          <!-- 分部模式（無影片）時，在空的影片區顯示「你打：X」 -->
+          <p class="song-part-label is-hidden" id="songPartLabel"></p>
+
           <button
             class="song-exit-btn is-hidden"
             id="songExitBtn"
@@ -248,5 +265,6 @@
       </div>
     </div>
     <script type="module" src="./src/main.js"></script>
+    <script src="https://imuse.ncnu.edu.tw/imuse-api/tracker.js" data-system="ForgeRhythm"></script>
   </body>
 </html>

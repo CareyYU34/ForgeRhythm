@@ -43,7 +43,8 @@ import { midiRequiresKnee } from "../audioEngine.js";
 
 /**
  * @param {Object}   deps
- * @param {Object}   deps.session        songSession 實例
+ * @param {Function} deps.getSession      回傳當前正在播放的 session
+ *   （songSession 或 partSession；兩者鴨子介面一致）。無人在播回傳 null。
  * @param {Object}   deps.audio          擴充後的 audioEngine（整個物件）
  * @param {Function} deps.freePlayZone   原本的 playZone，自由模式用
  * @param {Object}   deps.songUI         歌曲模式的 UI 更新介面
@@ -51,7 +52,7 @@ import { midiRequiresKnee } from "../audioEngine.js";
  * @param {Function} [deps.getLimbMode] 取得部位配對模式："off"｜"standard"｜"allKnee"（預設 "off"）
  */
 export function createHitRouter({
-  session,
+  getSession,
   audio,
   freePlayZone,
   songUI,
@@ -64,8 +65,11 @@ export function createHitRouter({
      * poseLoop 以三個參數呼叫，且不知道自己呼叫的是誰。
      */
     route(side, zoneId, zoneSound) {
+      // ── 取當前在播的 session（歌曲模式或分部模式）──
+      const session = getSession?.();
+
       // ── 非歌曲模式：原路發聲 ──
-      if (!session.isPlaying()) {
+      if (!session || !session.isPlaying()) {
         freePlayZone(side, zoneId, zoneSound);
         return;
       }

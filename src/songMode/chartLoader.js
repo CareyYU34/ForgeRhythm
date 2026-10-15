@@ -87,6 +87,53 @@ function dedupeNotes(notes, tolMs) {
 // ─── 主入口 ─────────────────────────────────────────────────────────────────
 
 /**
+ * 音符收集：支援單軌與多軌。秒 → ms，保留 ticks（barGrid 地基）。
+ *
+ * ⚠ 純收集，不過濾難度、不去重。回傳依時間排序的完整音符陣列
+ *   （分部模式的「選中分部」與「背景分部」都由此再切分）。
+ *
+ * @returns {Array<{time:number,midi:number,name:string,velocity:number,ticks:number|null}>}
+ */
+export function collectNotes(json) {
+  let raw = [];
+  if (Array.isArray(json?.tracks)) {
+    for (const tr of json.tracks) {
+      if (Array.isArray(tr?.notes)) raw = raw.concat(tr.notes);
+    }
+  } else if (Array.isArray(json?.notes)) {
+    raw = json.notes;
+  }
+
+  return raw
+    .filter((n) => Number.isFinite(n?.time) && Number.isFinite(n?.midi))
+    .map((n) => ({
+      time: n.time * 1000, // 秒 → ms
+      midi: n.midi,
+      name: n.name ?? String(n.midi),
+      velocity: Number.isFinite(n.velocity) ? n.velocity : 1,
+      // ⚠ barGrid 的地基。缺了會讓區塊格線降級。
+      ticks: Number.isFinite(n?.ticks) ? n.ticks : null,
+    }))
+    .sort((a, b) => a.time - b.time);
+}
+
+/**
+ * 列出譜面的分部（各 MIDI 音高與顆數）。分部模式的選單用。
+ *
+ * @returns {Array<{midi:number,name:string,count:number}>} 依顆數由多到少
+ */
+export function listParts(json) {
+  const notes = collectNotes(json);
+  const byMidi = new Map();
+  for (const n of notes) {
+    const cur = byMidi.get(n.midi);
+    if (cur) cur.count++;
+    else byMidi.set(n.midi, { midi: n.midi, name: n.name, count: 1 });
+  }
+  return [...byMidi.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
  * @param {Object} json Tone.js Midi 匯出的 JSON
  * @param {Object} [options]
  * @param {"basic"|"advanced"} [options.difficulty="advanced"]
@@ -98,30 +145,59 @@ function dedupeNotes(notes, tolMs) {
  * @returns {Object} chart
  */
 export function loadChart(json, options = {}) {
-  const warnings = [];
   const difficulty = options.difficulty === "basic" ? "basic" : "advanced";
+  return assembleChart(collectNotes(json), json?.header ?? {}, difficulty);
+}
 
-  // ── 音符收集：支援單軌與多軌 ──
-  let raw = [];
-  if (Array.isArray(json?.tracks)) {
-    for (const tr of json.tracks) {
-      if (Array.isArray(tr?.notes)) raw = raw.concat(tr.notes);
-    }
-  } else if (Array.isArray(json?.notes)) {
-    raw = json.notes;
+/**
+ * 分部模式：把譜面切成「選中分部」的 chart（供 sequencer/barGrid/cueTrack/
+ * songUI/hitRouter 使用）＋「背景分部」清單（供 backingTrack 排程）。
+ *
+ * ⚠ 背景清單刻意不 dedupe —— 同時刻不同鼓件（如 Ride + Kick）必須都響。
+ *   去重只發生在「選中分部」的 onsetList（單一鼓件幾乎不會有真正的齊奏）。
+ *
+ * @param {Object} json
+ * @param {Object} params
+ * @param {number} params.selectMidi 使用者選來打的分部（MIDI 音高）
+ * @param {"basic"|"advanced"} [params.difficulty="advanced"]
+ * @returns {Object} chart（附 backingList / selectedMidi）
+ */
+export function buildPartChart(json, { selectMidi, difficulty } = {}) {
+  const all = collectNotes(json);
+  if (all.length === 0) {
+    throw new Error("譜面沒有可用的音符（需要 tracks[].notes 或 notes）");
   }
 
-  let notes = raw
-    .filter((n) => Number.isFinite(n?.time) && Number.isFinite(n?.midi))
-    .map((n) => ({
-      time: n.time * 1000, // 秒 → ms
-      midi: n.midi,
-      name: n.name ?? String(n.midi),
-      velocity: Number.isFinite(n.velocity) ? n.velocity : 1,
-      // ⚠ barGrid 的地基。缺了會讓區塊格線降級。
-      ticks: Number.isFinite(n?.ticks) ? n.ticks : null,
-    }))
-    .sort((a, b) => a.time - b.time);
+  const selected = all.filter((n) => n.midi === selectMidi);
+  if (selected.length === 0) {
+    throw new Error(`譜面沒有 MIDI ${selectMidi} 的音符，無法建立分部。`);
+  }
+
+  const chart = assembleChart(
+    selected,
+    json?.header ?? {},
+    difficulty === "basic" ? "basic" : "advanced",
+  );
+
+  chart.selectedMidi = selectMidi;
+  chart.backingList = all
+    .filter((n) => n.midi !== selectMidi)
+    .map((n) => ({ midi: n.midi, time: n.time, name: n.name }));
+
+  return chart;
+}
+
+/**
+ * 把已收集的音符陣列組裝成 chart（難度過濾 → 去重 → BPM → 統計 → 查詢方法）。
+ * loadChart 與 buildPartChart 共用。
+ *
+ * @param {Array} notesIn collectNotes 的輸出（或其子集）
+ * @param {Object} header  json.header
+ * @param {"basic"|"advanced"} difficulty
+ */
+function assembleChart(notesIn, header, difficulty) {
+  const warnings = [];
+  let notes = notesIn;
 
   if (notes.length === 0) {
     throw new Error("譜面沒有可用的音符（需要 tracks[].notes 或 notes）");
@@ -137,7 +213,7 @@ export function loadChart(json, options = {}) {
   //   此時放棄過濾、退回進階（全部音符），並警告 —— 空譜比難度未生效更糟。
   let difficultyApplied = difficulty;
   if (difficulty === "basic") {
-    const ppq = Number.isFinite(json?.header?.ppq) ? json.header.ppq : 480;
+    const ppq = Number.isFinite(header?.ppq) ? header.ppq : 480;
     const kept = notes.filter(
       (n) => !Number.isFinite(n.ticks) || n.ticks % ppq === 0,
     );
@@ -164,7 +240,6 @@ export function loadChart(json, options = {}) {
   }
 
   // ── BPM ──
-  const header = json?.header ?? {};
   const firstTempo = Array.isArray(header.tempos)
     ? header.tempos.find((t) => Number.isFinite(t?.bpm) && t.bpm > 0)
     : null;

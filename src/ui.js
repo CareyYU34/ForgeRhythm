@@ -131,7 +131,7 @@ function createNumericControl({
   return { row, syncDisplay };
 }
 
-function createToggleControl({ label, value, onChange }) {
+function createToggleControl({ label, value, onChange, id }) {
   const row = document.createElement("div");
   row.className = "settings-control-row settings-toggle-row";
 
@@ -144,6 +144,7 @@ function createToggleControl({ label, value, onChange }) {
   toggleWrap.className = "settings-switch";
   toggleWrap.setAttribute("role", "switch");
   toggleWrap.setAttribute("aria-label", label);
+  if (id) toggleWrap.id = id;
 
   const toggleTrack = document.createElement("span");
   toggleTrack.className = "settings-switch-track";
@@ -185,6 +186,22 @@ function sectionTitle(text) {
  * 三選一（以上）的下拉控制項，樣式沿用 .rack-select。
  * @param {{label:string, value:string, options:{value:string,label:string}[], onChange:(v:string)=>void, id?:string}} opts
  */
+/** 設定面板內的動作按鈕（例：匯出 log）。 */
+function createButtonControl({ label, onClick, id }) {
+  const row = document.createElement("div");
+  row.className = "settings-control-row";
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "settings-action-btn";
+  if (id) btn.id = id;
+  btn.textContent = label;
+  btn.addEventListener("click", onClick);
+
+  row.appendChild(btn);
+  return row;
+}
+
 function createSelectControl({ label, value, options, onChange, id }) {
   const row = document.createElement("div");
   row.className = "settings-control-row";
@@ -263,6 +280,7 @@ export function initSettingsPanel({
   advancedDifficulty,
   playbackSpeed,
   drawPoseDebugEnabled,
+  showCameraFeed,
   showPFOverlay,
   onOutputGainChange,
   onVisibilityThresholdChange,
@@ -270,10 +288,15 @@ export function initSettingsPanel({
   onAdvancedDifficultyChange,
   onPlaybackSpeedChange,
   onDrawPoseDebugChange,
+  onShowCameraFeedChange,
   onShowPFOverlayChange,
   // 讀取即時（自動化調整後）的可見度閾值。adaptiveMonitor 會在背景漂移
   // state.visibilityThreshold，UI 端輪詢此函式把最新值反映到控制項顯示。
   getLiveVisibilityThreshold,
+  // ── 診斷 log 匯出（本地端限定）──
+  // showExportLog 為 true 時才渲染「匯出 log」按鈕，點擊呼叫 onExportLog。
+  showExportLog = false,
+  onExportLog,
 }) {
   const controlsEl = panelEl.querySelector("#runtimeControls");
   const debugControlsEl = panelEl.querySelector("#debugControls");
@@ -339,6 +362,7 @@ export function initSettingsPanel({
     // 開啟 = 進階（八分，吃全部音符）。於下次載入譜面（重新選歌）時生效。
     controlsEl.appendChild(
       createToggleControl({
+        id: "settingsDifficultyToggle",
         label: "進階難度（八分音符）",
         value: advancedDifficulty,
         onChange: onAdvancedDifficultyChange,
@@ -373,6 +397,14 @@ export function initSettingsPanel({
 
     debugControlsEl.appendChild(
       createToggleControl({
+        label: "顯示鏡頭畫面",
+        value: showCameraFeed,
+        onChange: onShowCameraFeedChange,
+      }),
+    );
+
+    debugControlsEl.appendChild(
+      createToggleControl({
         label: "全身節點",
         value: drawPoseDebugEnabled,
         onChange: onDrawPoseDebugChange,
@@ -386,6 +418,17 @@ export function initSettingsPanel({
         onChange: onShowPFOverlayChange,
       }),
     );
+
+    // 匯出診斷 log —— 只在本地端出現（showExportLog 由 main 傳 perfLog.isLocal()）。
+    if (showExportLog && typeof onExportLog === "function") {
+      debugControlsEl.appendChild(
+        createButtonControl({
+          id: "exportLogBtn",
+          label: "匯出 log",
+          onClick: onExportLog,
+        }),
+      );
+    }
   }
 
   toggleBtn.addEventListener("click", (e) => {

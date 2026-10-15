@@ -21,32 +21,24 @@ const TUNING = {
   // PF_HIT = restingPF × K1（手接近大腿多近才算打擊）
   K1: 2.0,
 
-  // ── 釋放門檻（遲滯寬度）─────────────────────────────────────────────────
-  // PF_RELEASE = PF_HIT × RELEASE_RATIO（手離開多遠才算釋放，允許下一次打擊）
-  //
-  // 舊版為 restingPF × K2，且取所有 zone 的最大值作為統一門檻。
-  // 該作法依賴 outer zone 較大的 restingPF 來撐開遲滯區間；outer 移除後，
-  // front 的 hit 與 release 會算出同一個數，遲滯歸零。
-  // 改為相對 PF_HIT 推導後，遲滯比例恆定，自適應調整 PF_HIT 時 release 等比跟隨。
-  //
-  // 3.75 的來源：舊版實際比例為右手 0.7234/0.1938 = 3.73、左手 0.7234/0.1810 = 4.00，
-  // 取中間值以複製原有手感。調大 = 手要抬更高才能打下一下（更難連打，更不易誤觸發）。
-  RELEASE_RATIO: 3.75,
-
-  // PF_RELEASE 的可達性上限：不超過 peakPF 平均值的這個比例。
-  // 防止 PF_HIT 被推到 peak cap 時，release 乘出一個手根本抬不到的高度，
-  // 導致打完一下之後永遠無法 rearm（該側直接靜音）。
-  RELEASE_PEAK_CAP_RATIO: 0.85,
+  // ── 釋放門檻（PF_RELEASE）已移除 ─────────────────────────────────────────
+  // 舊版 PF_RELEASE = PF_HIT × 3.75（上限 peakPFMean × 0.85）。PF_HIT 被自適應
+  // 調高時 release 撞上抬手可達上限 → 打完一下手抬不到就永遠 rearm 不了，
+  // 也拖慢連打速度。現在 PF 回到 PF_HIT 之上即重新武裝（conditions.js），
+  // 防連發改由 COOLDOWN_MS 與「下擊段峰值速度」負責。
 
   // SPEED_HIT = peakSpeed_mean × K3（速度門檻為校準打擊速度的百分比）
+  // conditions.js 比對的是「本次下擊段的峰值手速」，與校準的 peakHandSpeed 同口徑。
   K3: 0.3,
 
   // COOLDOWN_MS = durationMs_mean × K4（冷卻時間為校準打擊時長的百分比）
   K4: 0.8,
 
   // 冷卻時間的上下限（ms）
+  // 上限 400 → 200：校準打擊時長 ~650ms × 0.8 幾乎都撞上限，等於同一隻手每秒最多 2.5 下。
+  // 移除 PF_RELEASE 後冷卻是防連發抖動的主力，不宜再低於 ~150。
   MIN_COOLDOWN_MS: 80,
-  MAX_COOLDOWN_MS: 400,
+  MAX_COOLDOWN_MS: 200,
 
   // PF_HIT 不能超過 peakPF 平均值的這個比例（安全上限）
   PF_HIT_PEAK_CAP_RATIO: 0.6,
@@ -62,7 +54,7 @@ const TUNING = {
   PEAK_SPEED_CV_WARN: 0.5,
 
   // ── 膝蓋補償係數 ──────────────────────────────────────────────────────────
-  // 膝蓋每上升 1 個 normalized 單位，PF_HIT / PF_RELEASE 門檻同步增加的量。
+  // 膝蓋每上升 1 個 normalized 單位，PF_HIT（同時是重新武裝線）增加的量。
   // 目的：抵消提膝時大腿線旋轉造成的 PF 幾何漂移，避免誤觸發手部打擊。
   //
   // 推導：提膝 Δy ≈ 0.1 時，PF 漂移約 0.05~0.15（依大腿長度而定）。
@@ -91,38 +83,12 @@ function cv(arr) {
   return stddev(arr) / m;
 }
 
-// ─── 釋放門檻計算（唯一來源）─────────────────────────────────────────────────
-
-/**
- * 由 PF_HIT 推導 PF_RELEASE。
- *
- * 這是 release 的唯一計算來源，calibrationProfile 與 adaptiveMonitor 共用，
- * 避免公式在兩處各寫一份而漂移。
- *
- * @param {number|null} PF_HIT      - 已完成 clamp 的最終 PF_HIT
- * @param {number|null} peakPFMean  - 該 zone 的 peakPF 平均值（用於可達性上限）
- * @returns {number|null} PF_RELEASE，PF_HIT 無效時回傳 null
- */
-export function computeReleaseFromHit(PF_HIT, peakPFMean) {
-  if (PF_HIT == null || !Number.isFinite(PF_HIT)) return null;
-
-  let release = PF_HIT * TUNING.RELEASE_RATIO;
-
-  // 可達性上限：release 不能超出手實際能達到的 PF 範圍
-  if (Number.isFinite(peakPFMean) && peakPFMean > 0) {
-    release = Math.min(release, peakPFMean * TUNING.RELEASE_PEAK_CAP_RATIO);
-  }
-
-  return round4(release);
-}
-
 // ─── 核心：從單一 zone 的 strikes 計算動態參數 ──────────────────────────────
 
 function computeZoneParams(strikes, zoneKey) {
   if (!strikes || strikes.length === 0) {
     return {
       PF_HIT: null,
-      PF_RELEASE: null,
       SPEED_HIT: null,
       COOLDOWN_MS: null,
       isReliable: false,
@@ -150,10 +116,6 @@ function computeZoneParams(strikes, zoneKey) {
   // 下限：避免太低導致延遲
   PF_HIT = Math.max(PF_HIT, TUNING.PF_HIT_FLOOR);
 
-  // ── PF_RELEASE：由「已完成 clamp 的 PF_HIT」推導 ──
-  // 順序不可調換：必須在上下限保護之後計算，否則被 clamp 的那一側遲滯比例會失準。
-  const PF_RELEASE = computeReleaseFromHit(round4(PF_HIT), peakPFMean);
-
   // ── SPEED_HIT ──
   const SPEED_HIT = peakSpeedMean * TUNING.K3;
 
@@ -180,7 +142,6 @@ function computeZoneParams(strikes, zoneKey) {
 
   return {
     PF_HIT: round4(PF_HIT),
-    PF_RELEASE, // computeReleaseFromHit 內已 round4
     SPEED_HIT: round4(SPEED_HIT),
     COOLDOWN_MS,
     isReliable: warnings.length === 0,
@@ -226,14 +187,14 @@ export function buildCalibrationProfile(session) {
 
     // ── 膝蓋 baseline y（normalized 座標）──────────────────────────────────
     // 來源：校準時 FRONT_SNAPSHOT 階段的 bodySnapshot 平均膝蓋位置。
-    // poseLoop 用這個值計算「膝蓋上升量」，再動態補償 PF_HIT / PF_RELEASE。
+    // poseLoop 用這個值計算「膝蓋上升量」，再動態補償 PF_HIT。
     kneeBaseline: {
       left_y: round4(session.bodySnapshot?.leftKnee?.y ?? null),
       right_y: round4(session.bodySnapshot?.rightKnee?.y ?? null),
     },
   };
 
-  // 計算每個 zone 的參數（PF_RELEASE 改為 per-zone 儲存，不再取跨 zone 最大值）
+  // 計算每個 zone 的參數
   for (const [zoneKey, { side, direction }] of Object.entries(SIDE_ZONE_MAP)) {
     const zoneData = session.zones[zoneKey];
     const strikes = zoneData?.strikes ?? [];
@@ -241,7 +202,6 @@ export function buildCalibrationProfile(session) {
 
     profile[side][direction] = {
       PF_HIT: params.PF_HIT,
-      PF_RELEASE: params.PF_RELEASE,
       SPEED_HIT: params.SPEED_HIT,
       COOLDOWN_MS: params.COOLDOWN_MS,
       isReliable: params.isReliable,
@@ -263,7 +223,7 @@ export function buildCalibrationProfile(session) {
  * @param {CalibrationProfile} profile
  * @param {"right"|"left"} side
  * @param {"front"} direction - 手部觸發區已固定為 front
- * @returns {{ PF_HIT: number, PF_RELEASE: number, SPEED_HIT: number, COOLDOWN_MS: number }}
+ * @returns {{ PF_HIT: number, SPEED_HIT: number, COOLDOWN_MS: number }}
  */
 export function getZoneParams(profile, side, direction) {
   if (!profile) return null;
@@ -273,7 +233,6 @@ export function getZoneParams(profile, side, direction) {
 
   return {
     PF_HIT: zone.PF_HIT,
-    PF_RELEASE: zone.PF_RELEASE,
     SPEED_HIT: zone.SPEED_HIT,
     COOLDOWN_MS: zone.COOLDOWN_MS,
   };
@@ -284,12 +243,12 @@ export function getZoneParams(profile, side, direction) {
  *
  * 當膝蓋 y 值低於 baseline（= 膝蓋往上提），大腿線旋轉會造成 PF 幾何漂移，
  * 導致手部打擊誤觸發。此函式回傳一個正偏移量，讓呼叫端動態拉高
- * PF_HIT 和 PF_RELEASE，使漂移的 PF 值無法穿越門檻。
+ * PF_HIT，使漂移的 PF 值無法穿越門檻。
  *
  * @param {CalibrationProfile} profile
  * @param {"right"|"left"} side
  * @param {number} currentKneeY - 當前幀膝蓋的 normalized y 座標
- * @returns {number} 應疊加到 PF_HIT / PF_RELEASE 的補償量（>= 0）
+ * @returns {number} 應疊加到 PF_HIT 的補償量（>= 0）
  */
 export function calcKneeRisingAdj(profile, side, currentKneeY) {
   if (!profile) return 0;
@@ -341,8 +300,7 @@ export { TUNING };
 // 注意：此 profile 的 isCalibrated 為 false，代表「預設值」而非「正式校準結果」，
 // poseLoop 不區分兩者，但 main.js 可透過此旗標判斷是否已正式校準。
 //
-// PF_RELEASE 已改為 per-side 儲存（原本是頂層的 PF_RELEASE_UNIFIED），
-// 數值由 computeReleaseFromHit(PF_HIT, peakPFMean) 推導而得。
+// COOLDOWN_MS 原為 400（舊上限），隨 MAX_COOLDOWN_MS 改為 200。
 
 export const DEFAULT_CALIBRATION_PROFILE = Object.freeze({
   isCalibrated: false, // 標記為預設值，非正式校準
@@ -351,12 +309,10 @@ export const DEFAULT_CALIBRATION_PROFILE = Object.freeze({
   warnings: [],
 
   right: {
-    // PF_RELEASE = min(0.1938 × 3.75, 1.0290 × 0.85) = min(0.7268, 0.8747) = 0.7268
     front: Object.freeze({
       PF_HIT: 0.1938,
-      PF_RELEASE: 0.7268,
       SPEED_HIT: 1.0486,
-      COOLDOWN_MS: 400,
+      COOLDOWN_MS: 200,
       isReliable: true,
       _stats: Object.freeze({
         restingMean: 0.0969,
@@ -368,12 +324,10 @@ export const DEFAULT_CALIBRATION_PROFILE = Object.freeze({
   },
 
   left: {
-    // PF_RELEASE = min(0.1810 × 3.75, 1.4433 × 0.85) = min(0.6788, 1.2268) = 0.6788
     front: Object.freeze({
       PF_HIT: 0.181,
-      PF_RELEASE: 0.6788,
       SPEED_HIT: 1.0806,
-      COOLDOWN_MS: 400,
+      COOLDOWN_MS: 200,
       isReliable: true,
       _stats: Object.freeze({
         restingMean: 0.0905,

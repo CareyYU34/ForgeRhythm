@@ -30,12 +30,14 @@ import { createPoseLandmarker } from "./poseEngine/Mediapipe/poseLandmarker.js";
 import { createCalibrationEngine } from "./poseEngine/calibration.js";
 import { buildCalibrationProfile } from "./poseEngine/calibrationProfile.js";
 import { createAdaptiveMonitor } from "./poseEngine/adaptiveMonitor.js";
+import { perfLog } from "./poseEngine/perfLog.js";
 
 // ── 歌曲模式 ──
 import { SONG_LIBRARY } from "./songMode/manifest.js";
 import { TUNING } from "./songMode/tuning.js";
 import { createSongUI } from "./songMode/songUI.js";
 import { createSongSession } from "./songMode/songSession.js";
+import { createPartSession } from "./songMode/partSession.js";
 import { createHitRouter } from "./songMode/hitRouter.js";
 
 const video = document.getElementById("webcam");
@@ -47,6 +49,10 @@ const rackEl = document.getElementById("soundRack");
 const settingsToggle = document.getElementById("settingsToggle");
 const settingsPanel = document.getElementById("settingsPanel");
 const calibrateBtn = document.getElementById("calibrateBtn");
+
+function applyCameraFeedVisibility() {
+  frameEl?.classList.toggle("is-feed-hidden", !state.showCameraFeed);
+}
 
 // ── 校準 Overlay 元素 ──
 const calibOverlay = document.getElementById("calibOverlay");
@@ -172,6 +178,9 @@ const state = {
   ...createInitialPoseState(), // 包含 poseLoop 需要的初始狀態
 };
 
+// 鏡頭畫面顯示／隱藏（隱藏 = 黑底 + 只畫節點）。只切 CSS class，推論照常。
+applyCameraFeedVisibility();
+
 const zoneSound = createDefaultZoneSound();
 
 // ⚠ 必須保留整個 audioEngine 物件 ——
@@ -185,6 +194,10 @@ setOutputVolume(state.outputGain);
 // ⚠ 引導音走獨立匯流排，與 outputGain 完全脫鉤。
 //   使用者把打擊音量調小時，節拍器必須維持原音量。
 audioEngine.setCueVolume(TUNING.CUE_BUS_GAIN);
+
+// ⚠ 分部模式的背景伴奏走獨立 backingGain 匯流排（與打擊音量脫鉤）。
+//   使用者可再用控制列音量滑桿調整背景大小。
+audioEngine.setBackingVolume(TUNING.BACKING_BUS_GAIN);
 
 const getRect = () => getVideoDrawRect({ video, canvas });
 const syncCanvas = () => syncCanvasToCameraFrame({ frameEl, canvas });
@@ -215,8 +228,31 @@ const songSession = createSongSession({
   onNotice: (msg) => console.warn("[songMode]", msg),
 });
 
+// 分部模式（無影片，背景由 MIDI 即時合成）。與 songSession 互斥：
+// 一次只有一個 active，共用 songUI 與下方的 hitRouter / hudLoop。
+const partSession = createPartSession({
+  state,
+  audio: audioEngine,
+  getTransport: getActiveTransport,
+  setTransport: setActiveTransport,
+  songUI,
+  onNotice: (msg) => console.warn("[partMode]", msg),
+});
+
+/** 當前 active 的歌曲/分部 session（hudLoop 用）。兩者互斥。 */
+const getActiveSession = () =>
+  songSession.isActive() ? songSession : partSession.isActive() ? partSession : null;
+
+/** 當前「正在播放」的 session（hitRouter 用）。 */
+const getPlayingSession = () =>
+  songSession.isPlaying()
+    ? songSession
+    : partSession.isPlaying()
+      ? partSession
+      : null;
+
 const hitRouter = createHitRouter({
-  session: songSession,
+  getSession: getPlayingSession,
   audio: audioEngine,
   freePlayZone: playZone, // 自由模式仍走原本的 zoneSound 查表
   songUI,
@@ -285,9 +321,10 @@ const startCam = () => {
 };
 
 const stopCam = () => {
-  // ⚠ 關鏡頭 = 沒有觸發源，歌曲模式必須一併退出，
-  //   否則會留下「影片在播但打什麼都沒反應」的狀態。
+  // ⚠ 關鏡頭 = 沒有觸發源，歌曲模式 / 分部模式必須一併退出，
+  //   否則會留下「有背景/影片在播但打什麼都沒反應」的狀態。
   songSession.exit("camera-off");
+  partSession.exit("camera-off");
   monitor.stop();
   stopWebcam({
     video,
@@ -310,9 +347,76 @@ const stopCam = () => {
 // 發聲路徑完全在事件驅動的 hitRouter.route 裡，不經過這裡 ——
 // 但 route 也會呼叫一次 syncBlock，用來消除本迴圈 16 ms 空窗造成的競態。
 
+/**
+ * 設定歌曲難度並讓設定面板的「進階難度」按鈕跟著切換。
+ *
+ * 用於「某些歌寫死難度」（如中南美寫死進階/八分）：選到帶 difficulty 的歌時
+ * 呼叫，state 與按鈕視覺一次到位，使用者不會看到按鈕顯示的和實際載入的不一致。
+ * 難度在載入譜面時套用（buildPartChart / loadChart 讀 state.songDifficulty）。
+ */
+function setSongDifficulty(value) {
+  const v = value === "advanced" ? "advanced" : "basic";
+  state.songDifficulty = v;
+  const btn = document.getElementById("settingsDifficultyToggle");
+  if (btn) {
+    const on = v === "advanced";
+    btn.dataset.enabled = String(on);
+    btn.setAttribute("aria-checked", String(on));
+  }
+}
+
+/**
+ * 匯出診斷 log 成 JSON 檔（本地端限定，按鈕由設定面板渲染）。
+ * 直接觸發下載，不經外部服務。
+ */
+function exportPoseLog() {
+  const log = perfLog.getLog();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const blob = new Blob([JSON.stringify(log, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `poseLog-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // 釋放 blob URL（延後一點，確保下載已啟動）
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── 診斷紀錄的開關（本地端限定，見 poseEngine/perfLog.js）──
+// hudLoop 每幀偵測「是否正在演奏」的邊緣，進入時 begin、離開時 end。
+// 離開涵蓋歌曲結束 / 退出 / 關鏡頭 —— 全都算一次「中斷」。
+let _perfLogPlaying = false;
+function syncPerfLog(session, playing) {
+  if (!perfLog.isLocal()) return;
+  if (playing && !_perfLogPlaying) {
+    const song = session?.getSong?.();
+    const chart = session?.getChart?.();
+    perfLog.begin({
+      song: song?.title ?? null,
+      mode: song?.mode ?? "song",
+      selectedMidi: chart?.selectedMidi ?? null,
+      limbMode: state.limbMode,
+      difficulty: state.songDifficulty,
+    });
+    _perfLogPlaying = true;
+  } else if (!playing && _perfLogPlaying) {
+    perfLog.end("stopped");
+    _perfLogPlaying = false;
+  }
+}
+
 function hudLoop() {
   requestAnimationFrame(hudLoop);
-  if (!songSession.isPlaying()) return;
+
+  // 歌曲模式與分部模式共用同一條 HUD 迴圈（兩者互斥）。
+  const session = getActiveSession();
+  const playing = !!(session && session.isPlaying());
+  syncPerfLog(session, playing);
+  if (!playing) return;
 
   const transport = getActiveTransport();
   if (!transport) return;
@@ -321,16 +425,16 @@ function hudLoop() {
 
   // ⚠ 對齊必須在讀取 sequencer 狀態之前，
   //   否則這一幀畫出來的格線會是對齊前的舊游標。
-  if (songSession.syncBlock(tMs)) {
+  if (session.syncBlock(tMs)) {
     songUI.invalidateBlock();
   }
 
   // 倒數自行依時間決定顯示 / 隱藏 / 「開始」，不受階段切換控制
   songUI.updateCountdown(tMs);
 
-  const barGrid = songSession.getBarGrid();
-  const chart = songSession.getChart();
-  const sequencer = songSession.getSequencer();
+  const barGrid = session.getBarGrid();
+  const chart = session.getChart();
+  const sequencer = session.getSequencer();
   if (!barGrid || !chart || !sequencer) return;
 
   // ── 鼓面在播放一開始就出現 ──────────────────────────────────────────────
@@ -343,7 +447,7 @@ function hudLoop() {
   // 這樣「鼓面先出現、等對的時間才正常跑」兩件事同時成立。
   songUI.showRibbonPhase();
 
-  const firstOnsetMs = songSession.getFirstOnsetMs();
+  const firstOnsetMs = session.getFirstOnsetMs();
   const blockIdx =
     tMs < firstOnsetMs
       ? barGrid.blockIndexAt(firstOnsetMs) // 前奏期固定先顯示第一小節
@@ -356,12 +460,27 @@ function hudLoop() {
 async function bootstrap() {
   // ⚠ beforeLoad：按下 YT「載入」時先退出歌曲模式。
   //   兩者共用 player-card，不退出會讓 transport 被覆寫而留下孤兒排程。
-  initYouTube({ beforeLoad: () => songSession.exit("switch") });
+  initYouTube({
+    beforeLoad: () => {
+      songSession.exit("switch");
+      partSession.exit("switch");
+    },
+  });
   initMidiLibraryPicker();
 
-  // ── 歌曲清單 ──
-  songUI.renderLibrary(SONG_LIBRARY, (song) => songSession.enter(song));
-  songUI.bindExit(() => songSession.exit("manual"));
+  // ── 歌曲清單 ── 依 song.mode 分派：part → 分部模式，其餘 → 影片歌曲模式
+  songUI.renderLibrary(SONG_LIBRARY, (song) => {
+    songSession.exit("switch");
+    partSession.exit("switch");
+    // 某些歌寫死難度（中南美 = 進階/八分）：切歌時同步 state 與按鈕視覺。
+    if (song.difficulty) setSongDifficulty(song.difficulty);
+    if (song.mode === "part") partSession.enter(song);
+    else songSession.enter(song);
+  });
+  songUI.bindExit(() => {
+    songSession.exit("manual");
+    partSession.exit("manual");
+  });
 
   state.poseLandmarker = await createPoseLandmarker(state.runningMode);
 
@@ -382,6 +501,7 @@ async function bootstrap() {
     advancedDifficulty: state.songDifficulty === "advanced",
     playbackSpeed: document.getElementById("playbackSpeed")?.value ?? "1",
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
+    showCameraFeed: state.showCameraFeed,
     showPFOverlay: state.showPFOverlay,
     onOutputGainChange: (value) => {
       state.outputGain = value;
@@ -412,9 +532,16 @@ async function bootstrap() {
     onDrawPoseDebugChange: (value) => {
       state.drawPoseDebugEnabled = value;
     },
+    onShowCameraFeedChange: (value) => {
+      state.showCameraFeed = value;
+      applyCameraFeedVisibility();
+    },
     onShowPFOverlayChange: (value) => {
       state.showPFOverlay = value;
     },
+    // 匯出 log 按鈕只在本地端出現（線上 perfLog.isLocal() 為 false）。
+    showExportLog: perfLog.isLocal(),
+    onExportLog: exportPoseLog,
   });
 
   // 影片控制列速度變更時，反向同步到設定面板的速度選單，維持兩邊一致。

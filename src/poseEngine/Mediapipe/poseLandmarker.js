@@ -18,7 +18,7 @@ import {
 //
 // TODO(perf-④ 效能分層 + 自動偵測)：開機量測前 ~30 幀平均推論耗時，自動在
 //   high(full+GPU) / balanced(lite+GPU) / low(lite+CPU) 間選檔，並在設定面板留手動
-//   覆寫（存 localStorage）。目前先硬選 lite + delegate 自動退回；分層做完後
+//   覆寫（存 localStorage）。目前先硬選 full + delegate 自動退回；分層做完後
 //   modelTier 由偵測器決定，這裡的 DEFAULT_MODEL_TIER 僅作 fallback。
 //
 // TODO(perf-⑤ 推論節流「永遠只處理最新幀」)：若最低檔仍追不上，於
@@ -32,8 +32,10 @@ const MODEL_PATHS = {
   heavy: "./Model/pose_landmarker_heavy.task",
 };
 
-// 預設模型層級：低階機友善。要臨時比較不同 model 的延遲，改這個字串即可（見 todo ④）。
-const DEFAULT_MODEL_TIER = "lite";
+// 預設模型層級：改回 full —— 手部 17–20 點（小指／食指）座標比 lite 穩，PF 判斷較準。
+// 畫面改為黑底只畫節點後，輸入解析度維持 640×360 即可。低階機若推論跟不上，
+// 待 todo ④（自動退回 lite）/ ⑤（只處理最新幀）補上。要臨時比較延遲，改這個字串即可。
+const DEFAULT_MODEL_TIER = "full";
 
 export async function createPoseLandmarker(
   runningMode = "IMAGE",

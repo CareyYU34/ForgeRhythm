@@ -1,0 +1,3797 @@
+{
+  "header": {
+    "name": "中南美",
+    "ppq": 480,
+    "tempos": [
+      {
+        "ticks": 0,
+        "bpm": 60
+      }
+    ],
+    "timeSignatures": [
+      {
+        "ticks": 0,
+        "timeSignature": [
+          4,
+          4
+        ]
+      }
+    ]
+  },
+  "tracks": [
+    {
+      "channel": 9,
+      "name": "Drum Kit",
+      "notes": [
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 0,
+          "time": 0,
+          "duration": 0.24791666666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 0,
+          "time": 0,
+          "duration": 0.4979166666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 120,
+          "time": 0.25,
+          "duration": 0.24791666666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 240,
+          "time": 0.5,
+          "duration": 0.24791666666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 240,
+          "time": 0.5,
+          "duration": 0.24791666666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 360,
+          "time": 0.75,
+          "duration": 0.24791666666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 360,
+          "time": 0.75,
+          "duration": 0.24791666666666667,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 480,
+          "time": 1,
+          "duration": 0.24791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 480,
+          "time": 1,
+          "duration": 0.49791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 600,
+          "time": 1.25,
+          "duration": 0.24791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 720,
+          "time": 1.5,
+          "duration": 0.24791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 720,
+          "time": 1.5,
+          "duration": 0.24791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 840,
+          "time": 1.75,
+          "duration": 0.24791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 840,
+          "time": 1.75,
+          "duration": 0.24791666666666656,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 960,
+          "time": 2,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 960,
+          "time": 2,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 960,
+          "time": 2,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 1080,
+          "time": 2.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 1200,
+          "time": 2.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 1200,
+          "time": 2.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 1320,
+          "time": 2.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 1320,
+          "time": 2.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 1440,
+          "time": 3,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 1440,
+          "time": 3,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 1560,
+          "time": 3.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 1680,
+          "time": 3.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 1680,
+          "time": 3.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 1800,
+          "time": 3.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 1800,
+          "time": 3.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 1920,
+          "time": 4,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 1920,
+          "time": 4,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 2040,
+          "time": 4.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 2160,
+          "time": 4.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 2160,
+          "time": 4.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 2280,
+          "time": 4.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 2280,
+          "time": 4.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 2400,
+          "time": 5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 2400,
+          "time": 5,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 2520,
+          "time": 5.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 2640,
+          "time": 5.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 2640,
+          "time": 5.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 2760,
+          "time": 5.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 2760,
+          "time": 5.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 2880,
+          "time": 6,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 2880,
+          "time": 6,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 2880,
+          "time": 6,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 3000,
+          "time": 6.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 3120,
+          "time": 6.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 3120,
+          "time": 6.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 3240,
+          "time": 6.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 3240,
+          "time": 6.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 3360,
+          "time": 7,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 3360,
+          "time": 7,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 3480,
+          "time": 7.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 3600,
+          "time": 7.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 3600,
+          "time": 7.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 3720,
+          "time": 7.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 3720,
+          "time": 7.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 3840,
+          "time": 8,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 3840,
+          "time": 8,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 3960,
+          "time": 8.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 4080,
+          "time": 8.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 4080,
+          "time": 8.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 4200,
+          "time": 8.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 4200,
+          "time": 8.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 4320,
+          "time": 9,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 4320,
+          "time": 9,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 4440,
+          "time": 9.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 4560,
+          "time": 9.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 4560,
+          "time": 9.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 4680,
+          "time": 9.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 4680,
+          "time": 9.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 4800,
+          "time": 10,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 4800,
+          "time": 10,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 4800,
+          "time": 10,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 5040,
+          "time": 10.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 5040,
+          "time": 10.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 5040,
+          "time": 10.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 5160,
+          "time": 10.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 5160,
+          "time": 10.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 5280,
+          "time": 11,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 5280,
+          "time": 11,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 5400,
+          "time": 11.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 5520,
+          "time": 11.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 5520,
+          "time": 11.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 5640,
+          "time": 11.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 5640,
+          "time": 11.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 5760,
+          "time": 12,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 5760,
+          "time": 12,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 5880,
+          "time": 12.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6000,
+          "time": 12.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 6000,
+          "time": 12.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6120,
+          "time": 12.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 6120,
+          "time": 12.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6240,
+          "time": 13,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 6240,
+          "time": 13,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 6360,
+          "time": 13.25,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6480,
+          "time": 13.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 6480,
+          "time": 13.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6600,
+          "time": 13.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 6600,
+          "time": 13.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 6720,
+          "time": 14,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6720,
+          "time": 14,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 6720,
+          "time": 14,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 6960,
+          "time": 14.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 6960,
+          "time": 14.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 6960,
+          "time": 14.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 7080,
+          "time": 14.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 7080,
+          "time": 14.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 7200,
+          "time": 15,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 7200,
+          "time": 15,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 7200,
+          "time": 15,
+          "duration": 0.4979166666666668,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 7440,
+          "time": 15.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 7440,
+          "time": 15.5,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 7560,
+          "time": 15.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 7560,
+          "time": 15.75,
+          "duration": 0.24791666666666679,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 7680,
+          "time": 16,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 7680,
+          "time": 16,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 7680,
+          "time": 16,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 7920,
+          "time": 16.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 7920,
+          "time": 16.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 8040,
+          "time": 16.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 8040,
+          "time": 16.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 8160,
+          "time": 17,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 8160,
+          "time": 17,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 8160,
+          "time": 17,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 8400,
+          "time": 17.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 8400,
+          "time": 17.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 8520,
+          "time": 17.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 8520,
+          "time": 17.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 8520,
+          "time": 17.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 8640,
+          "time": 18,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 8640,
+          "time": 18,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 8640,
+          "time": 18,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 8880,
+          "time": 18.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 8880,
+          "time": 18.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 9000,
+          "time": 18.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9000,
+          "time": 18.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 9000,
+          "time": 18.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 9120,
+          "time": 19,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9120,
+          "time": 19,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 9120,
+          "time": 19,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9360,
+          "time": 19.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 9360,
+          "time": 19.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9480,
+          "time": 19.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 9480,
+          "time": 19.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 9600,
+          "time": 20,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9600,
+          "time": 20,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 9600,
+          "time": 20,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9840,
+          "time": 20.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 9840,
+          "time": 20.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 9960,
+          "time": 20.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 9960,
+          "time": 20.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 10080,
+          "time": 21,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 10080,
+          "time": 21,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 10080,
+          "time": 21,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 10320,
+          "time": 21.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 10320,
+          "time": 21.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 10440,
+          "time": 21.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 10440,
+          "time": 21.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 10440,
+          "time": 21.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 10560,
+          "time": 22,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 10560,
+          "time": 22,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 10560,
+          "time": 22,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 10800,
+          "time": 22.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 10800,
+          "time": 22.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 10920,
+          "time": 22.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 10920,
+          "time": 22.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 10920,
+          "time": 22.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 11040,
+          "time": 23,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 11040,
+          "time": 23,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 11040,
+          "time": 23,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 11280,
+          "time": 23.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 11280,
+          "time": 23.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 11400,
+          "time": 23.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 11400,
+          "time": 23.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 11520,
+          "time": 24,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 11520,
+          "time": 24,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 11640,
+          "time": 24.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 11760,
+          "time": 24.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 11760,
+          "time": 24.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 11880,
+          "time": 24.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 11880,
+          "time": 24.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12000,
+          "time": 25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 12000,
+          "time": 25,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 12120,
+          "time": 25.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12240,
+          "time": 25.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 12240,
+          "time": 25.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12360,
+          "time": 25.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 12360,
+          "time": 25.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 12480,
+          "time": 26,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12480,
+          "time": 26,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 12480,
+          "time": 26,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 12600,
+          "time": 26.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12720,
+          "time": 26.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 12720,
+          "time": 26.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12840,
+          "time": 26.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 12840,
+          "time": 26.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 12960,
+          "time": 27,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 12960,
+          "time": 27,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 13080,
+          "time": 27.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 13200,
+          "time": 27.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 13200,
+          "time": 27.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 13320,
+          "time": 27.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 13320,
+          "time": 27.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 13440,
+          "time": 28,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 13440,
+          "time": 28,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 13560,
+          "time": 28.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 13680,
+          "time": 28.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 13680,
+          "time": 28.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 13800,
+          "time": 28.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 13800,
+          "time": 28.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 13920,
+          "time": 29,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 13920,
+          "time": 29,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 14040,
+          "time": 29.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 14160,
+          "time": 29.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 14160,
+          "time": 29.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 14280,
+          "time": 29.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 14280,
+          "time": 29.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 14400,
+          "time": 30,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 14400,
+          "time": 30,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 14400,
+          "time": 30,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 14520,
+          "time": 30.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 14640,
+          "time": 30.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 14640,
+          "time": 30.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 14760,
+          "time": 30.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 14760,
+          "time": 30.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 14880,
+          "time": 31,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 14880,
+          "time": 31,
+          "duration": 0.497916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 15000,
+          "time": 31.25,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 15120,
+          "time": 31.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 15120,
+          "time": 31.5,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 15240,
+          "time": 31.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 15240,
+          "time": 31.75,
+          "duration": 0.247916666666665,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 15360,
+          "time": 32,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 15360,
+          "time": 32,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 15600,
+          "time": 32.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 15600,
+          "time": 32.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 15600,
+          "time": 32.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 15720,
+          "time": 32.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 15720,
+          "time": 32.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 15840,
+          "time": 33,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 15840,
+          "time": 33,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 16080,
+          "time": 33.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 16080,
+          "time": 33.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 16200,
+          "time": 33.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 16200,
+          "time": 33.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 16200,
+          "time": 33.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 16320,
+          "time": 34,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 16320,
+          "time": 34,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 16320,
+          "time": 34,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 16560,
+          "time": 34.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 16560,
+          "time": 34.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 16680,
+          "time": 34.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 16680,
+          "time": 34.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 16800,
+          "time": 35,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 16800,
+          "time": 35,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 16920,
+          "time": 35.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 17040,
+          "time": 35.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 17040,
+          "time": 35.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 17160,
+          "time": 35.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 17160,
+          "time": 35.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 17280,
+          "time": 36,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 17280,
+          "time": 36,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 17520,
+          "time": 36.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 17520,
+          "time": 36.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 17520,
+          "time": 36.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 17640,
+          "time": 36.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 17640,
+          "time": 36.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 17760,
+          "time": 37,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 17760,
+          "time": 37,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18000,
+          "time": 37.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 18000,
+          "time": 37.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 18120,
+          "time": 37.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18120,
+          "time": 37.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 18120,
+          "time": 37.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 18240,
+          "time": 38,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18240,
+          "time": 38,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 18240,
+          "time": 38,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18480,
+          "time": 38.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 18480,
+          "time": 38.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18600,
+          "time": 38.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 18600,
+          "time": 38.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18720,
+          "time": 39,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 18720,
+          "time": 39,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 18840,
+          "time": 39.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 18960,
+          "time": 39.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 18960,
+          "time": 39.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 19080,
+          "time": 39.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 19080,
+          "time": 39.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 19200,
+          "time": 40,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 19200,
+          "time": 40,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 19200,
+          "time": 40,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 19320,
+          "time": 40.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 19440,
+          "time": 40.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 19440,
+          "time": 40.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 19560,
+          "time": 40.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 19560,
+          "time": 40.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 19680,
+          "time": 41,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 19680,
+          "time": 41,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 19680,
+          "time": 41,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 19800,
+          "time": 41.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 19920,
+          "time": 41.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 19920,
+          "time": 41.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 20040,
+          "time": 41.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 20040,
+          "time": 41.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 20160,
+          "time": 42,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 20160,
+          "time": 42,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 20400,
+          "time": 42.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 20400,
+          "time": 42.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 20520,
+          "time": 42.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 20520,
+          "time": 42.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 20520,
+          "time": 42.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 20640,
+          "time": 43,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 20640,
+          "time": 43,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 20640,
+          "time": 43,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 20880,
+          "time": 43.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 20880,
+          "time": 43.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21000,
+          "time": 43.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 21000,
+          "time": 43.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 21120,
+          "time": 44,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21120,
+          "time": 44,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 21120,
+          "time": 44,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 21240,
+          "time": 44.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21360,
+          "time": 44.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 21360,
+          "time": 44.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21480,
+          "time": 44.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 21480,
+          "time": 44.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 21600,
+          "time": 45,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21600,
+          "time": 45,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 21600,
+          "time": 45,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 21720,
+          "time": 45.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21840,
+          "time": 45.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 21840,
+          "time": 45.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 21960,
+          "time": 45.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 21960,
+          "time": 45.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 22080,
+          "time": 46,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 22080,
+          "time": 46,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 22320,
+          "time": 46.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 22320,
+          "time": 46.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 22440,
+          "time": 46.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 22440,
+          "time": 46.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 22440,
+          "time": 46.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 22560,
+          "time": 47,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 22560,
+          "time": 47,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 22560,
+          "time": 47,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 22800,
+          "time": 47.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 22800,
+          "time": 47.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 22920,
+          "time": 47.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 22920,
+          "time": 47.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 23040,
+          "time": 48,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 23040,
+          "time": 48,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 23160,
+          "time": 48.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 23280,
+          "time": 48.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 23280,
+          "time": 48.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 23400,
+          "time": 48.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 23400,
+          "time": 48.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 23520,
+          "time": 49,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 23520,
+          "time": 49,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 23640,
+          "time": 49.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 23760,
+          "time": 49.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 23760,
+          "time": 49.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 23880,
+          "time": 49.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 23880,
+          "time": 49.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 24000,
+          "time": 50,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24000,
+          "time": 50,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 24000,
+          "time": 50,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 24120,
+          "time": 50.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24240,
+          "time": 50.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 24240,
+          "time": 50.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24360,
+          "time": 50.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 24360,
+          "time": 50.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24480,
+          "time": 51,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 24480,
+          "time": 51,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 24600,
+          "time": 51.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24720,
+          "time": 51.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 24720,
+          "time": 51.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24840,
+          "time": 51.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 24840,
+          "time": 51.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 24960,
+          "time": 52,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 24960,
+          "time": 52,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 25080,
+          "time": 52.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 25200,
+          "time": 52.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 25200,
+          "time": 52.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 25320,
+          "time": 52.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 25320,
+          "time": 52.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 25440,
+          "time": 53,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 25440,
+          "time": 53,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 25560,
+          "time": 53.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 25680,
+          "time": 53.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 25680,
+          "time": 53.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 25800,
+          "time": 53.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 25800,
+          "time": 53.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 25920,
+          "time": 54,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 25920,
+          "time": 54,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 25920,
+          "time": 54,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 26040,
+          "time": 54.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 26160,
+          "time": 54.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 26160,
+          "time": 54.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 26280,
+          "time": 54.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 26280,
+          "time": 54.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 26400,
+          "time": 55,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 26400,
+          "time": 55,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 26520,
+          "time": 55.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 26640,
+          "time": 55.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 26640,
+          "time": 55.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 26760,
+          "time": 55.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 26760,
+          "time": 55.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 26880,
+          "time": 56,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 26880,
+          "time": 56,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 26880,
+          "time": 56,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27000,
+          "time": 56.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27120,
+          "time": 56.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 27120,
+          "time": 56.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 27120,
+          "time": 56.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 27240,
+          "time": 56.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 27240,
+          "time": 56.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 27360,
+          "time": 57,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 27360,
+          "time": 57,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27480,
+          "time": 57.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27600,
+          "time": 57.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 27600,
+          "time": 57.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 27600,
+          "time": 57.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27720,
+          "time": 57.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 27720,
+          "time": 57.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 27720,
+          "time": 57.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27840,
+          "time": 58,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 27840,
+          "time": 58,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 27840,
+          "time": 58,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 27960,
+          "time": 58.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 28080,
+          "time": 58.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 28080,
+          "time": 58.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 28200,
+          "time": 58.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 28200,
+          "time": 58.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 28200,
+          "time": 58.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 28320,
+          "time": 59,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 28320,
+          "time": 59,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 28440,
+          "time": 59.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 28560,
+          "time": 59.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 28560,
+          "time": 59.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 28680,
+          "time": 59.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 28680,
+          "time": 59.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 28800,
+          "time": 60,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 28800,
+          "time": 60,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 28920,
+          "time": 60.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 29040,
+          "time": 60.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 29040,
+          "time": 60.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 29160,
+          "time": 60.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 29160,
+          "time": 60.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 29280,
+          "time": 61,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 29280,
+          "time": 61,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 29400,
+          "time": 61.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 29520,
+          "time": 61.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 29520,
+          "time": 61.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 29640,
+          "time": 61.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 29640,
+          "time": 61.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 29760,
+          "time": 62,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 29760,
+          "time": 62,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 29760,
+          "time": 62,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 29880,
+          "time": 62.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 30000,
+          "time": 62.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 30000,
+          "time": 62.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 30120,
+          "time": 62.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 30120,
+          "time": 62.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 30240,
+          "time": 63,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 30240,
+          "time": 63,
+          "duration": 0.49791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 37,
+          "name": "Side Stick",
+          "ticks": 30360,
+          "time": 63.25,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 30480,
+          "time": 63.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 44,
+          "name": "Pedal Hi-Hat",
+          "ticks": 30480,
+          "time": 63.5,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 51,
+          "name": "Ride Cymbal 1",
+          "ticks": 30600,
+          "time": 63.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        },
+        {
+          "midi": 36,
+          "name": "Bass Drum 1",
+          "ticks": 30600,
+          "time": 63.75,
+          "duration": 0.24791666666666856,
+          "velocity": 0.6299212598425197
+        }
+      ]
+    }
+  ]
+}
