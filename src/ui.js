@@ -277,6 +277,7 @@ export function initSettingsPanel({
   outputGain,
   visibilityThreshold,
   limbMode,
+  freeStyle,
   advancedDifficulty,
   playbackSpeed,
   drawPoseDebugEnabled,
@@ -285,6 +286,7 @@ export function initSettingsPanel({
   onOutputGainChange,
   onVisibilityThresholdChange,
   onLimbModeChange,
+  onFreeStyleChange,
   onAdvancedDifficultyChange,
   onPlaybackSpeedChange,
   onDrawPoseDebugChange,
@@ -337,6 +339,22 @@ export function initSettingsPanel({
       onChange: onVisibilityThresholdChange,
     });
     controlsEl.appendChild(visibilityControl.row);
+
+    // ── 自由模式 ──
+    controlsEl.appendChild(sectionTitle("自由模式"));
+
+    // 打法：groove = 任何部位都推進 groove／fill（預設）；mapping = 打哪裡響哪個音
+    controlsEl.appendChild(
+      createSelectControl({
+        label: "打法",
+        value: freeStyle ?? "groove",
+        options: [
+          { value: "groove", label: "節奏循環" },
+          { value: "mapping", label: "位置對應" },
+        ],
+        onChange: onFreeStyleChange,
+      }),
+    );
 
     // ── 歌曲模式 ──
     controlsEl.appendChild(sectionTitle("歌曲模式"));

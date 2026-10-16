@@ -64,9 +64,9 @@ export const CUE_LIBRARY = [
  *   引導音要與鼓組發聲路徑完全隔離，鼓組取樣則同屬一條發聲路徑）。
  */
 export const SONG_DRUM_LIBRARY = [
-  { id: "rim", label: "Side Stick", url: "./assets/sounds/37_Rim Shot.wav" },
+  { id: "cross_stick", label: "Cross Stick", url: "./assets/sounds/37_Cross-stick.wav" },
   {
-    id: "pedalhat",
+    id: "pedal",
     label: "Pedal Hi-Hat",
     url: "./assets/sounds/44_Hi-Hat Pedal.wav",
   },
@@ -74,6 +74,11 @@ export const SONG_DRUM_LIBRARY = [
     id: "ride",
     label: "Ride Cymbal",
     url: "./assets/sounds/51_59_Ride Cymbal.wav",
+  },
+  {
+    id: "crash",
+    label: "Crash Cymbal",
+    url: "./assets/sounds/49_57_Crash Cymbal.wav",
   },
 ];
 
@@ -88,14 +93,19 @@ export const ZONES = [
  *
  * 歌曲模式的 sequencer 與背景排程器都回傳 MIDI 音高，需要這張表才能發聲。
  *   36/38/42 為原本的月亮 song mode 三音，走 SOUND_LIBRARY；
- *   37/44/51 為分部模式（中南美）新增，走 SONG_DRUM_LIBRARY。
+ *   37/44/51 為分部模式（中南美）新增，走 SONG_DRUM_LIBRARY；
+ *   49 為節奏循環模式（grooveMode）過門用，同樣走 SONG_DRUM_LIBRARY。
+ *
+ * ⚠ 取樣 id 與 grooveMode/grooveTable.js 的 SOUNDS 音名一致（含大小寫），
+ *   新增音色時兩邊用同一個名字。
  */
 export const MIDI_TO_SOUND_ID = {
   36: "kick",
   38: "snare",
   42: "hihat",
-  37: "rim",
-  44: "pedalhat",
+  37: "cross_stick",
+  44: "pedal",
+  49: "crash",
   51: "ride",
 };
 

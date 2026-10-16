@@ -39,6 +39,7 @@ import { createSongUI } from "./songMode/songUI.js";
 import { createSongSession } from "./songMode/songSession.js";
 import { createPartSession } from "./songMode/partSession.js";
 import { createHitRouter } from "./songMode/hitRouter.js";
+import { createFreePlayRouter } from "./grooveMode/freePlayRouter.js";
 
 const video = document.getElementById("webcam");
 const canvas = document.getElementById("output");
@@ -175,6 +176,9 @@ const state = {
   // 「advanced」進階（八分，吃全部音符）。於載入譜面時套用，
   // 播放中切換需重新選歌才生效。
   songDifficulty: "basic",
+  // 自由模式打法：「groove」節奏循環（預設，任何部位都推進 groove／fill，
+  // 見 grooveMode/）／「mapping」位置對應（打哪裡響哪個音）。
+  freeStyle: "groove",
   ...createInitialPoseState(), // 包含 poseLoop 需要的初始狀態
 };
 
@@ -251,10 +255,17 @@ const getPlayingSession = () =>
       ? partSession
       : null;
 
+// 自由模式分流：位置對應（原 zoneSound 查表）或節奏循環。
+const freePlayRouter = createFreePlayRouter({
+  audio: audioEngine,
+  playZone,
+  getFreeStyle: () => state.freeStyle,
+});
+
 const hitRouter = createHitRouter({
   getSession: getPlayingSession,
   audio: audioEngine,
-  freePlayZone: playZone, // 自由模式仍走原本的 zoneSound 查表
+  freePlayZone: freePlayRouter.route, // 自由模式：依 freeStyle 分流
   songUI,
   getTransport: getActiveTransport,
   // 讀取當下設定（可在遊玩中切換，故用 getter 而非快照）
@@ -498,6 +509,7 @@ async function bootstrap() {
     outputGain: state.outputGain,
     visibilityThreshold: state.visibilityThreshold,
     limbMode: state.limbMode,
+    freeStyle: state.freeStyle,
     advancedDifficulty: state.songDifficulty === "advanced",
     playbackSpeed: document.getElementById("playbackSpeed")?.value ?? "1",
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
@@ -509,6 +521,9 @@ async function bootstrap() {
     },
     onLimbModeChange: (value) => {
       state.limbMode = value;
+    },
+    onFreeStyleChange: (value) => {
+      state.freeStyle = value;
     },
     // 難度切換於「下次載入譜面」時生效（重新選歌）。
     onAdvancedDifficultyChange: (value) => {
