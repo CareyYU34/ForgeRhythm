@@ -1,4 +1,5 @@
 import {
+  KNEE_THRESHOLDS_DEFAULT,
   monitoringKneeKickConditions,
   monitoringTriggerConditions,
 } from "./conditions.js";
@@ -65,27 +66,42 @@ function emaPoint(prev, curr, alpha) {
   };
 }
 
-const KNEE_HISTORY_SIZE = 5;
+// 膝蓋短時間窗長度（秒）。≈ 舊版 30fps 下 5 幀（4 段 × 33ms），改以時間定義後不隨幀率變。
+const KNEE_WINDOW_SEC = 0.14;
+
+// ── 身體尺度（肩寬）：膝蓋位移 / 速度的正規化分母 ──
+// 慢速 EMA：肩寬只隨人離鏡頭遠近緩慢變化，不需要即時跟。
+const BODY_SCALE_EMA_ALPHA = 0.1;
+// 尚未量到肩寬時的退回值（校準紀錄 shoulderWidth 平均 ≈ 0.2）
+const BODY_SCALE_FALLBACK = 0.2;
+const LEFT_SHOULDER = 11;
+const RIGHT_SHOULDER = 12;
+
+/** 以肩寬更新 state.bodyScale；肩膀不可見的幀維持舊值（不參與 skipPoints，不中斷判斷） */
+function updateBodyScale(state, landmarks, visThreshold) {
+  const ls = landmarks[LEFT_SHOULDER];
+  const rs = landmarks[RIGHT_SHOULDER];
+  for (const p of [ls, rs]) {
+    if (!isStrictlyNormalizedPoint(p)) return;
+    if ((p.visibility ?? 1) < visThreshold) return;
+  }
+  const width = Math.hypot(ls.x - rs.x, ls.y - rs.y);
+  if (width < 1e-3) return;
+  state.bodyScale =
+    state.bodyScale == null
+      ? width
+      : BODY_SCALE_EMA_ALPHA * width + (1 - BODY_SCALE_EMA_ALPHA) * state.bodyScale;
+}
 
 // 手部觸發區已固定為大腿正面，不再依進入方向分辨 front / outer / inner。
 // 保留 zone 這一層抽象是因為膝蓋仍使用 "heel"，音色表的 key 格式維持 `${side}_${zoneId}`。
 const HAND_ZONE = "front";
 
-// 硬編碼靜態預設值（未校準時使用）
-const KNEE_THRESHOLDS_DEFAULT = {
-  windowDropHit: 0.028,
-  windowDropRelease: 0.012,
-  avgSpeedHit: 0.32,
-  peakSpeedHit: 0.5,
-  cooldownMs: 180,
-  windowMaxDx: 0.02,
-  maxXyRatio: 0.85,
-  downFrameRatioHit: 0.7,
-};
-
 /**
- * 取得膝蓋閾值：已校準時用動態值覆蓋 windowDropHit/windowDropRelease，
- * 其餘欄位仍使用靜態預設。
+ * 取得膝蓋閾值（預設值見 conditions.js:KNEE_THRESHOLDS_DEFAULT）：
+ * profile 有 knee 欄位時用動態值覆蓋 windowDropHit/windowDropRelease，
+ * windowDropStrongHit 隨 windowDropHit 等比縮放（adaptiveMonitor 只調 windowDropHit 一個旋鈕），
+ * 其餘欄位使用靜態預設。
  */
 function getKneeThresholds(profile, side) {
   const base = KNEE_THRESHOLDS_DEFAULT;
@@ -95,6 +111,8 @@ function getKneeThresholds(profile, side) {
     ...base,
     windowDropHit: k.windowDropHit,
     windowDropRelease: k.windowDropRelease,
+    windowDropStrongHit:
+      base.windowDropStrongHit * (k.windowDropHit / base.windowDropHit),
   };
 }
 
@@ -109,8 +127,6 @@ function skipPoints(points, threshold) {
 function clearTrackingHistory(state) {
   state.prevLeftHand = null;
   state.prevRightHand = null;
-  state.prevLeftKnee = null;
-  state.prevRightKnee = null;
   state.leftKneeHistory = [];
   state.rightKneeHistory = [];
   state.preSec = 0;
@@ -132,10 +148,9 @@ export function createInitialPoseState() {
     rightThighCordon: null, // 右大腿PF數據（用於 hit 判斷）
     rightState: { canHit: false, lastHitMs: -Infinity },
     leftState: { canHit: false, lastHitMs: -Infinity },
-    prevLeftKnee: null,
-    prevRightKnee: null,
     leftKneeHistory: [],
     rightKneeHistory: [],
+    bodyScale: null, // 肩寬 EMA（膝蓋特徵的正規化分母；null = 尚未量到，用 BODY_SCALE_FALLBACK）
     visibilityThreshold: 0.75, // landmark 可見度閾值，低於這個值的點會被視為失真點，觸發重置機制
     leftKneeState: {
       canHit: false,
@@ -151,6 +166,9 @@ export function createInitialPoseState() {
     drawPoseDebugEnabled: true,
     showCameraFeed: false,
     showPFOverlay: false,
+    // 膝蓋觸發開關：false = 膝蓋完全不判斷、不產生任何打擊事件
+    //（adaptiveMonitor 的膝蓋自適應也暫停，避免關閉期間門檻被調動）
+    kneeTriggerEnabled: true,
 
     // ── 校準 profile（null = 未校準，不發聲）──
     calibrationProfile: null,
@@ -170,6 +188,7 @@ const USER_PREFERENCE_KEYS = [
   "visibilityThreshold",
   "calibrationProfile",
   "showPFOverlay",
+  "kneeTriggerEnabled",
 ];
 
 export function resetPoseState(state) {
@@ -597,15 +616,19 @@ export function createPredictWebcam({
           state.leftKneeHistory,
           leftKnee,
           videoTimeSec,
-          KNEE_HISTORY_SIZE,
+          KNEE_WINDOW_SEC,
         );
 
         state.rightKneeHistory = pushPointHistory(
           state.rightKneeHistory,
           rightKnee,
           videoTimeSec,
-          KNEE_HISTORY_SIZE,
+          KNEE_WINDOW_SEC,
         );
+
+        // 肩寬同樣在 guard 外更新，校準完成那一刻就已有可用的尺度。
+        updateBodyScale(state, poseLandmarks, state.visibilityThreshold);
+        const bodyScale = state.bodyScale ?? BODY_SCALE_FALLBACK;
 
         if (state.calibrationProfile) {
           const profile = state.calibrationProfile;
@@ -659,29 +682,43 @@ export function createPredictWebcam({
           // ==============================================================================
           // Knee kick conditions
           // ── Knee kick hit 判斷（history 已在 guard 外累積，這裡只做判斷）──
-          const leftKneeMetrics = summarizeKneeMotion(state.leftKneeHistory);
-          const rightKneeMetrics = summarizeKneeMotion(state.rightKneeHistory);
+          const leftKneeMetrics = summarizeKneeMotion(
+            state.leftKneeHistory,
+            bodyScale,
+          );
+          const rightKneeMetrics = summarizeKneeMotion(
+            state.rightKneeHistory,
+            bodyScale,
+          );
 
           // ⚠ 提到判斷之前取好，diagnostics 也要記這份「當下的膝蓋標準」。
           const leftKneeThr = getKneeThresholds(profile, "left");
           const rightKneeThr = getKneeThresholds(profile, "right");
 
-          if (leftKneeMetrics) {
-            state.leftKneeState = monitoringKneeKickConditions(
-              state.leftKneeState,
-              leftKneeMetrics,
-              webTimeMs,
-              leftKneeThr,
-            );
-          }
+          // 膝蓋觸發關閉：不判斷、不產生事件。
+          // ⚠ 必須主動清 didHit，否則上一幀殘留的 didHit 會在下面被派發出去。
+          //   history 照常累積（在 guard 外），重新開啟時立刻有可用的視窗。
+          if (!state.kneeTriggerEnabled) {
+            state.leftKneeState = { ...state.leftKneeState, didHit: false };
+            state.rightKneeState = { ...state.rightKneeState, didHit: false };
+          } else {
+            if (leftKneeMetrics) {
+              state.leftKneeState = monitoringKneeKickConditions(
+                state.leftKneeState,
+                leftKneeMetrics,
+                webTimeMs,
+                leftKneeThr,
+              );
+            }
 
-          if (rightKneeMetrics) {
-            state.rightKneeState = monitoringKneeKickConditions(
-              state.rightKneeState,
-              rightKneeMetrics,
-              webTimeMs,
-              rightKneeThr,
-            );
+            if (rightKneeMetrics) {
+              state.rightKneeState = monitoringKneeKickConditions(
+                state.rightKneeState,
+                rightKneeMetrics,
+                webTimeMs,
+                rightKneeThr,
+              );
+            }
           }
 
           // ── 診斷紀錄（本地端、演奏中才收）──
@@ -701,7 +738,7 @@ export function createPredictWebcam({
                     }
                   : null;
               perfLog.setStandards({
-                note: "手 pfHit 逐幀記（含提膝補償，同時是重新武裝線）；手速門檻比對下擊段峰值 spPk；膝 kDropHit/kDropRel 逐幀記。其餘為靜態標準。",
+                note: "手 pfHit 逐幀記（含提膝補償，同時是重新武裝線）；手速門檻比對下擊段峰值 spPk；膝 kDropHit/kDropRel/kDropStr 逐幀記（單位 = 肩寬 kScale）。其餘為靜態標準。",
                 hand: { left: handStd(leftParams), right: handStd(rightParams) },
                 knee: { left: leftKneeThr, right: rightKneeThr },
               });
@@ -728,15 +765,12 @@ export function createPredictWebcam({
               kAdjL: r2(leftKneeAdj),
               kAdjR: r2(rightKneeAdj),
 
-              // ── 膝：實測（湊齊 conditions.js 比對的所有量）──
+              // ── 膝：實測（湊齊 conditions.js 比對的所有量；位移/速度單位 = 肩寬）──
+              kScale: r2(bodyScale),
               kneeDyL: r2(leftKneeMetrics?.windowDy),
               kneeDyR: r2(rightKneeMetrics?.windowDy),
-              kneeSpL: r2(leftKneeMetrics?.avgDownSpeed),
-              kneeSpR: r2(rightKneeMetrics?.avgDownSpeed),
               kneePkL: r2(leftKneeMetrics?.maxDownSpeed),
               kneePkR: r2(rightKneeMetrics?.maxDownSpeed),
-              kneeDxL: r2(leftKneeMetrics?.windowDx),
-              kneeDxR: r2(rightKneeMetrics?.windowDx),
               kneeXyL: r2(leftKneeMetrics?.xyRatio),
               kneeXyR: r2(rightKneeMetrics?.xyRatio),
               kneeDfrL: r2(leftKneeMetrics?.downFrameRatio),
@@ -747,6 +781,8 @@ export function createPredictWebcam({
               kDropHitR: r2(rightKneeThr?.windowDropHit),
               kDropRelL: r2(leftKneeThr?.windowDropRelease),
               kDropRelR: r2(rightKneeThr?.windowDropRelease),
+              kDropStrL: r2(leftKneeThr?.windowDropStrongHit),
+              kDropStrR: r2(rightKneeThr?.windowDropStrongHit),
               kArmL: !!state.leftKneeState?.canHit,
               kArmR: !!state.rightKneeState?.canHit,
             });
@@ -834,9 +870,6 @@ export function createPredictWebcam({
             for (const tm of animTimings) tm.animShowT = ts;
           });
         }
-
-        state.prevLeftKnee = leftKnee;
-        state.prevRightKnee = rightKnee;
       });
     }
 

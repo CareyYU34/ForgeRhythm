@@ -65,6 +65,26 @@ export function monitoringTriggerConditions(
   return { ...State, didHit: false };
 }
 
+// ── 膝蓋門檻預設值（poseLoop 與 adaptiveMonitor 共用這一份）──
+// 位移單位 = 肩寬（windowDy / bodyScale），速度單位 = 肩寬 / 秒。
+// 由舊版「原始 normalized 座標」門檻 ÷ 0.2（校準紀錄 shoulderWidth 平均 ≈ 0.2）換算，
+// 30fps 下行為與舊版一致：
+//   舊 windowDropHit 0.028 → 0.14、windowDropRelease 0.012 → 0.06、peakSpeedHit 0.5 → 2.5
+//   舊 avgSpeedHit 0.32（× 舊 5 幀窗 0.133s）→ windowDropStrongHit 0.21
+// 已移除：
+//   windowMaxDx — 與 xyRatio 同為排除水平移動，且用絕對座標受遠近影響，改由 xyRatio 負責。
+//   avgSpeedHit — 時間窗改為固定秒數後 avgDownSpeed = windowDy / 常數，與 windowDy 同一個量；
+//                 原本的「平均速度夠快」路徑改寫成 windowDy ≥ windowDropStrongHit。
+export const KNEE_THRESHOLDS_DEFAULT = Object.freeze({
+  windowDropHit: 0.14, // 必要條件：時間窗內至少下落這麼多（adaptiveMonitor 近失調整的對象）
+  windowDropRelease: 0.06, // 低於它才重新武裝
+  windowDropStrongHit: 0.21, // 下落夠大 → 不必看峰值速度（隨 windowDropHit 等比縮放）
+  peakSpeedHit: 2.5, // 下落中等時，需單段峰值速度夠快（俐落的一踩）
+  cooldownMs: 180,
+  maxXyRatio: 0.85,
+  downFrameRatioHit: 0.7,
+});
+
 export function monitoringKneeKickConditions(
   state,
   metrics,
@@ -79,42 +99,24 @@ export function monitoringKneeKickConditions(
   if (state.lastHitMs == null) state.lastHitMs = -Infinity;
   if (state.canHit == null) state.canHit = true;
 
-  const {
-    windowDy,
-    windowDx,
-    sumAbsDx,
-    sumAbsDy,
-    avgDownSpeed,
-    maxDownSpeed,
-    downFrameRatio,
-    xyRatio,
-  } = metrics;
+  const { windowDy, maxDownSpeed, downFrameRatio, xyRatio } = metrics;
 
   const {
     windowDropHit,
     windowDropRelease,
-    avgSpeedHit,
+    windowDropStrongHit,
     peakSpeedHit,
     cooldownMs,
-    windowMaxDx,
     maxXyRatio,
     downFrameRatioHit,
   } = thresholds;
 
-  // 冷卻期間仍保留最新特徵，方便觀察 log，但不允許命中。
+  // 回傳時一併帶上最新特徵，方便觀察 log（adaptiveMonitor 的近失追蹤也讀這裡的 windowDy）。
+  const features = { windowDy, maxDownSpeed, downFrameRatio, xyRatio };
+
+  // 冷卻期間仍保留最新特徵，但不允許命中。
   if (nowMs - state.lastHitMs < cooldownMs) {
-    return {
-      ...state,
-      didHit: false,
-      windowDy,
-      windowDx,
-      sumAbsDx,
-      sumAbsDy,
-      avgDownSpeed,
-      maxDownSpeed,
-      downFrameRatio,
-      xyRatio,
-    };
+    return { ...state, didHit: false, ...features };
   }
 
   // 動作回到較平穩狀態後，重新開放下一次命中。
@@ -123,42 +125,19 @@ export function monitoringKneeKickConditions(
   }
 
   // 用短時間窗特徵一起判斷，避免單幀跳點或左右平移誤觸。
+  // 速度：下落夠大（≈ 平均速度夠快）或單段峰值夠快，二擇一。
   const ok =
     state.canHit &&
     windowDy >= windowDropHit &&
-    (avgDownSpeed >= avgSpeedHit || maxDownSpeed >= peakSpeedHit) &&
-    windowDx <= windowMaxDx &&
+    (windowDy >= windowDropStrongHit || maxDownSpeed >= peakSpeedHit) &&
     xyRatio <= maxXyRatio &&
     downFrameRatio >= downFrameRatioHit;
 
   if (ok) {
     state.canHit = false;
     state.lastHitMs = nowMs;
-
-    return {
-      ...state,
-      didHit: true,
-      windowDy,
-      windowDx,
-      sumAbsDx,
-      sumAbsDy,
-      avgDownSpeed,
-      maxDownSpeed,
-      downFrameRatio,
-      xyRatio,
-    };
+    return { ...state, didHit: true, ...features };
   }
 
-  return {
-    ...state,
-    didHit: false,
-    windowDy,
-    windowDx,
-    sumAbsDx,
-    sumAbsDy,
-    avgDownSpeed,
-    maxDownSpeed,
-    downFrameRatio,
-    xyRatio,
-  };
+  return { ...state, didHit: false, ...features };
 }

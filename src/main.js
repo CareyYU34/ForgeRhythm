@@ -218,9 +218,14 @@ const monitor = createAdaptiveMonitor({ state });
 // ⚠ 建立順序：songUI → session → router，且必須在 createPredictWebcam 之前，
 //   因為 router.route 要當作 playZone 參數注入。
 
+// 部位配對的實際生效值：膝蓋觸發關閉時一律「不配對」，
+// 否則限膝蓋的音符（大鼓／全膝蓋）會永遠打不到。
+const getEffectiveLimbMode = () =>
+  state.kneeTriggerEnabled ? state.limbMode : "off";
+
 const songUI = createSongUI({
   // 音符圖示需知道當前部位配對模式：allKnee 時全顯示腳
-  getLimbMode: () => state.limbMode,
+  getLimbMode: getEffectiveLimbMode,
 });
 
 const songSession = createSongSession({
@@ -269,7 +274,7 @@ const hitRouter = createHitRouter({
   songUI,
   getTransport: getActiveTransport,
   // 讀取當下設定（可在遊玩中切換，故用 getter 而非快照）
-  getLimbMode: () => state.limbMode,
+  getLimbMode: getEffectiveLimbMode,
 });
 
 const predictWebcam = createPredictWebcam({
@@ -515,6 +520,7 @@ async function bootstrap() {
     drawPoseDebugEnabled: state.drawPoseDebugEnabled,
     showCameraFeed: state.showCameraFeed,
     showPFOverlay: state.showPFOverlay,
+    kneeTriggerEnabled: state.kneeTriggerEnabled,
     onOutputGainChange: (value) => {
       state.outputGain = value;
       setOutputVolume(value);
@@ -553,6 +559,9 @@ async function bootstrap() {
     },
     onShowPFOverlayChange: (value) => {
       state.showPFOverlay = value;
+    },
+    onKneeTriggerChange: (value) => {
+      state.kneeTriggerEnabled = value;
     },
     // 匯出 log 按鈕只在本地端出現（線上 perfLog.isLocal() 為 false）。
     showExportLog: perfLog.isLocal(),

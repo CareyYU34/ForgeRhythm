@@ -283,6 +283,7 @@ export function initSettingsPanel({
   drawPoseDebugEnabled,
   showCameraFeed,
   showPFOverlay,
+  kneeTriggerEnabled,
   onOutputGainChange,
   onVisibilityThresholdChange,
   onLimbModeChange,
@@ -292,6 +293,7 @@ export function initSettingsPanel({
   onDrawPoseDebugChange,
   onShowCameraFeedChange,
   onShowPFOverlayChange,
+  onKneeTriggerChange,
   // 讀取即時（自動化調整後）的可見度閾值。adaptiveMonitor 會在背景漂移
   // state.visibilityThreshold，UI 端輪詢此函式把最新值反映到控制項顯示。
   getLiveVisibilityThreshold,
@@ -339,6 +341,16 @@ export function initSettingsPanel({
       onChange: onVisibilityThresholdChange,
     });
     controlsEl.appendChild(visibilityControl.row);
+
+    // 膝蓋觸發：關閉後膝蓋動作完全不產生打擊（自由／歌曲模式皆然）。
+    // 歌曲模式的部位配對在關閉時視同「不配對」（見 main.js getLimbMode）。
+    controlsEl.appendChild(
+      createToggleControl({
+        label: "膝蓋觸發",
+        value: kneeTriggerEnabled,
+        onChange: onKneeTriggerChange,
+      }),
+    );
 
     // ── 自由模式 ──
     controlsEl.appendChild(sectionTitle("自由模式"));

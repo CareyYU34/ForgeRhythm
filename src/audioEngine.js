@@ -80,6 +80,9 @@ export const SONG_DRUM_LIBRARY = [
     label: "Crash Cymbal",
     url: "./assets/sounds/49_57_Crash Cymbal.wav",
   },
+  { id: "tom1", label: "Tom 1", url: "./assets/sounds/50_Tom 2.wav" },
+  { id: "tom2", label: "Tom 2", url: "./assets/sounds/47_Tom 2.wav" },
+  { id: "floor", label: "Floor Tom", url: "./assets/sounds/41_43_Floor Tom.wav" },
 ];
 
 // 手部觸發區固定為大腿正面；heel 由膝蓋踢擊觸發。
@@ -94,7 +97,9 @@ export const ZONES = [
  * 歌曲模式的 sequencer 與背景排程器都回傳 MIDI 音高，需要這張表才能發聲。
  *   36/38/42 為原本的月亮 song mode 三音，走 SOUND_LIBRARY；
  *   37/44/51 為分部模式（中南美）新增，走 SONG_DRUM_LIBRARY；
- *   49 為節奏循環模式（grooveMode）過門用，同樣走 SONG_DRUM_LIBRARY。
+ *   49 為節奏循環模式（grooveMode）過門用，同樣走 SONG_DRUM_LIBRARY；
+ *   50/47/41/43 為 grooveMode 過門用的 tom，同樣走 SONG_DRUM_LIBRARY
+ *   （41／43 共用 floor 取樣，與檔名一致）。
  *
  * ⚠ 取樣 id 與 grooveMode/grooveTable.js 的 SOUNDS 音名一致（含大小寫），
  *   新增音色時兩邊用同一個名字。
@@ -107,6 +112,10 @@ export const MIDI_TO_SOUND_ID = {
   44: "pedal",
   49: "crash",
   51: "ride",
+  50: "tom1",
+  47: "tom2",
+  43: "floor",
+  41: "floor",
 };
 
 /**

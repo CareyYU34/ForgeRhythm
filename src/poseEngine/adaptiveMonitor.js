@@ -7,7 +7,8 @@
  *   1. 冷啟動：偵測關鍵節點可見度達標後，自動套用預設 CalibrationProfile
  *   2. PF 自適應：追蹤每個 zone 的 PF 低谷值，感知打擊習慣漂移並更新 PF_HIT
  *      （v2 循環式估計器，見下方「PF 低谷估計架構」）
- *   3. Knee 自適應：偵測「有踢腿意圖但未觸發」，分別調整 windowDropHit / avgSpeedHit
+ *   3. Knee 自適應：偵測「有踢腿意圖但未觸發」，調整 windowDropHit（只降不升；
+ *      poseLoop 讓 windowDropRelease / windowDropStrongHit 隨它等比縮放）
  *   4. Visibility 自適應：根據節點歷史可見度，動態調整全域 visibilityThreshold
  *   5. 手部 near-miss 升級：偵測「有下擊但差一點才觸發」，把 PF_HIT 往上推（只升不降），
  *      解開「力道到不了 PF_HIT → 沒有成功樣本 → PF_HIT 卡死打不出來」的死結。
@@ -52,6 +53,7 @@
 
 import { DEFAULT_CALIBRATION_PROFILE } from "./calibrationProfile.js";
 import { TUNING } from "./calibrationProfile.js";
+import { KNEE_THRESHOLDS_DEFAULT } from "./conditions.js";
 
 // ─── 可調參數 ────────────────────────────────────────────────────────────────
 
@@ -150,13 +152,9 @@ const DEFAULT_PEAK_PF_MEAN = {
   left_front: 1.4433,
 };
 
-// ─── Knee 初始門檻（與 poseLoop 中的 KNEE_THRESHOLDS_DEFAULT 對應）───────────
-
-const KNEE_DEFAULT_THRESHOLDS = {
-  windowDropHit: 0.028,
-  windowDropRelease: 0.012,
-  avgSpeedHit: 0.32,
-};
+// ─── Knee 初始門檻：直接用 conditions.js 的 KNEE_THRESHOLDS_DEFAULT（單位 = 肩寬）───
+// 舊版在此另存一份副本，單位改動時容易兩邊不同步，已移除。
+const KNEE_DEFAULT_THRESHOLDS = KNEE_THRESHOLDS_DEFAULT;
 
 // ─── 工具函式 ────────────────────────────────────────────────────────────────
 
@@ -220,11 +218,9 @@ function createHandNearMissTracker() {
 function createKneeNearMissTracker() {
   return {
     nearMissDropCount: 0, // windowDropHit 近失次數
-    nearMissSpeedCount: 0, // avgSpeedHit 近失次數
     lastAdjustMs: -Infinity,
     // 記錄初始值，供 min ratio 保護使用
     initWindowDropHit: KNEE_DEFAULT_THRESHOLDS.windowDropHit,
-    initAvgSpeedHit: KNEE_DEFAULT_THRESHOLDS.avgSpeedHit,
   };
 }
 
@@ -722,6 +718,8 @@ export function createAdaptiveMonitor({ state }) {
 
   function updateKneeNearMiss(side, nowMs) {
     if (!state.calibrationProfile) return;
+    // 膝蓋觸發關閉時不調門檻：關閉期間的膝蓋動作不是「想踢沒踢中」
+    if (!state.kneeTriggerEnabled) return;
 
     const tracker = kneeTrackers[side];
     if (!tracker) return;
@@ -730,7 +728,6 @@ export function createAdaptiveMonitor({ state }) {
     const kneeStateKey = side === "left" ? "leftKneeState" : "rightKneeState";
     if (state[kneeStateKey]?.didHit) {
       tracker.nearMissDropCount = 0;
-      tracker.nearMissSpeedCount = 0;
       return;
     }
 
@@ -738,39 +735,30 @@ export function createAdaptiveMonitor({ state }) {
     if (nowMs - tracker.lastAdjustMs < MONITOR_TUNING.KNEE_ADJUST_COOLDOWN_MS)
       return;
 
-    // 取得當前 knee history 的摘要（由 poseLoop 已維護在 state 中）
+    // history 不足兩點 = 剛被 clearTrackingHistory 清掉，poseLoop 本幀沒有算特徵，
+    // kneeState 裡的 windowDy 是舊值，不能拿來累積近失。
     const historyKey = side === "left" ? "leftKneeHistory" : "rightKneeHistory";
     const history = state[historyKey];
     if (!history || history.length < 2) return;
 
+    // windowDy 直接讀 poseLoop 寫在 kneeState 的特徵（已除以肩寬，與門檻同單位）。
+    // 舊版在這裡用原始座標自己重算一份，正規化後兩邊會對不上。
+    const windowDy = state[kneeStateKey]?.windowDy;
+    if (windowDy == null) return;
+
     // 取得當前使用中的門檻值
-    const currentKneeProfile = state.calibrationProfile.knee?.[side];
     const currentDropHit =
-      currentKneeProfile?.windowDropHit ??
+      state.calibrationProfile.knee?.[side]?.windowDropHit ??
       KNEE_DEFAULT_THRESHOLDS.windowDropHit;
-    const currentSpeedHit = KNEE_DEFAULT_THRESHOLDS.avgSpeedHit; // avgSpeedHit 不存在 profile，取預設
 
-    // 計算 knee motion 特徵（直接從 history 取最新窗口）
-    const last = history[history.length - 1];
-    const first = history[0];
-    const windowDt = Math.max(1e-4, last.t - first.t);
-    const windowDy = last.y - first.y;
-    const avgDownSpeed = Math.max(0, windowDy) / windowDt;
-
-    const didTrigger = state[kneeStateKey]?.didHit === false; // 確認本幀沒觸發
-
-    // 近失判定 A：位移接近但未達門檻
+    // 近失判定：位移接近但未達門檻。
+    // （舊版另有 avgSpeedHit 近失路徑，但 poseLoop 從未讀取調整結果，已移除；
+    //   「平均速度」路徑現由 windowDropStrongHit 表示，隨 windowDropHit 等比縮放。）
     const nearDrop =
       windowDy >= currentDropHit * MONITOR_TUNING.NEAR_MISS_RATIO &&
       windowDy < currentDropHit;
 
-    // 近失判定 B：速度接近但未達門檻
-    const nearSpeed =
-      avgDownSpeed >= currentSpeedHit * MONITOR_TUNING.NEAR_MISS_RATIO &&
-      avgDownSpeed < currentSpeedHit;
-
     if (nearDrop) tracker.nearMissDropCount += 1;
-    if (nearSpeed) tracker.nearMissSpeedCount += 1;
 
     // 觸發調整
     let adjusted = false;
@@ -806,35 +794,6 @@ export function createAdaptiveMonitor({ state }) {
       };
 
       tracker.nearMissDropCount = 0;
-      adjusted = true;
-    }
-
-    if (tracker.nearMissSpeedCount >= MONITOR_TUNING.NEAR_MISS_THRESHOLD) {
-      // avgSpeedHit 調整：直接記錄在 tracker（poseLoop 讀取時需另行支援，見備註）
-      const minAllowed =
-        tracker.initAvgSpeedHit * MONITOR_TUNING.KNEE_ADJUST_MIN_RATIO;
-      const newSpeedHit = Math.max(
-        minAllowed,
-        round4(currentSpeedHit * MONITOR_TUNING.KNEE_ADJUST_FACTOR),
-      );
-
-      console.log(
-        `[adaptiveMonitor] ${side} knee avgSpeedHit 調整: ${currentSpeedHit.toFixed(4)} → ${newSpeedHit.toFixed(4)}`,
-      );
-
-      ensureKneeProfile();
-      state.calibrationProfile = {
-        ...state.calibrationProfile,
-        knee: {
-          ...state.calibrationProfile.knee,
-          [side]: {
-            ...state.calibrationProfile.knee[side],
-            avgSpeedHit: newSpeedHit,
-          },
-        },
-      };
-
-      tracker.nearMissSpeedCount = 0;
       adjusted = true;
     }
 

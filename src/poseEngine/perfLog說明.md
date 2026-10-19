@@ -54,19 +54,19 @@
 ## 5. standards（觸發標準參考，只記一次）
 
 放**靜態門檻**（不會隨時間變的）。會被 adaptiveMonitor 漂移的**動態門檻**另外
-逐幀記在 frame 裡（手：`pfHit*`；膝：`kDropHit*/kDropRel*`），這樣既有基準
+逐幀記在 frame 裡（手：`pfHit*`；膝：`kDropHit*/kDropRel*/kDropStr*`），這樣既有基準
 又看得出調整軌跡。
 
 ```jsonc
 {
-  "note": "手 pfHit 逐幀記（含提膝補償，同時是重新武裝線）；手速門檻比對下擊段峰值 spPk；膝 kDropHit/kDropRel 逐幀記。其餘為靜態標準。",
+  "note": "手 pfHit 逐幀記（含提膝補償，同時是重新武裝線）；手速門檻比對下擊段峰值 spPk；膝 kDropHit/kDropRel/kDropStr 逐幀記（單位 = 肩寬 kScale）。其餘為靜態標準。",
   "hand": {
     "left":  { "PF_HIT": …, "SPEED_HIT": …, "COOLDOWN_MS": … },
     "right": { … }              // 未校準取不到 zone 參數時為 null
   },
   "knee": {
-    "left":  { "windowDropHit": …, "windowDropRelease": …, "avgSpeedHit": …,
-               "peakSpeedHit": …, "cooldownMs": …, "windowMaxDx": …,
+    "left":  { "windowDropHit": …, "windowDropRelease": …, "windowDropStrongHit": …,
+               "peakSpeedHit": …, "cooldownMs": …,
                "maxXyRatio": …, "downFrameRatioHit": … },
     "right": { … }
   }
@@ -123,16 +123,18 @@ segment 就是「這一擊打下去之前 PF / 速度 / 膝蓋特徵怎麼走的
 
 ### 膝蓋（heel 觸發看這組）
 
+時間窗固定 0.14 秒（不隨幀率變）；位移 / 速度皆**除以肩寬**（單位 = 肩寬、肩寬/秒），不受人離鏡頭遠近影響。
+
 | 欄位 | 意義（= conditions.js 的實測量） | 對照門檻 |
 |---|---|---|
-| `kneeDyL/R` | `windowDy` 視窗內垂直位移（正 = 下掉） | `kDropHit*`（≥ 才觸發） |
-| `kneeSpL/R` | `avgDownSpeed` 平均下降速度 | `standards.knee.*.avgSpeedHit`（≥） |
+| `kScale` | 身體尺度：肩寬 EMA（normalized；未量到時退回 0.2） | — |
+| `kneeDyL/R` | `windowDy` 視窗內垂直位移（正 = 下掉） | `kDropHit*`（≥ 才觸發）、`kDropStr*` |
 | `kneePkL/R` | `maxDownSpeed` 峰值下降速度 | `standards.knee.*.peakSpeedHit`（≥） |
-| `kneeDxL/R` | `windowDx` 視窗內水平位移 | `standards.knee.*.windowMaxDx`（≤） |
 | `kneeXyL/R` | `xyRatio` 水平/垂直比 | `standards.knee.*.maxXyRatio`（≤） |
 | `kneeDfrL/R` | `downFrameRatio` 下降幀比例 | `standards.knee.*.downFrameRatioHit`（≥） |
 | `kDropHitL/R` | **動態**：`windowDropHit`（adaptiveMonitor 近失調整） | 實測 `kneeDy*` |
 | `kDropRelL/R` | **動態**：`windowDropRelease`（低於它才重新武裝） | 實測 `kneeDy*` |
+| `kDropStrL/R` | **動態**：`windowDropStrongHit`（下落夠大就免看峰值速度；隨 `kDropHit` 等比縮放） | 實測 `kneeDy*` |
 | `kArmL` / `kArmR` | 膝蓋本幀判斷後是否已武裝 | — |
 
 ## 8. 觸發條件（怎麼用上面欄位判斷「差多少」）
@@ -149,12 +151,11 @@ armL == true  且  pfL ≤ pfHitL  且  spPkL ≥ spHitL     （右手同理換 
 ```
 kArm == true
 且 kneeDy ≥ kDropHit
-且 (kneeSp ≥ avgSpeedHit  或  kneePk ≥ peakSpeedHit)
-且 kneeDx ≤ windowMaxDx
+且 (kneeDy ≥ kDropStr  或  kneePk ≥ peakSpeedHit)
 且 kneeXy ≤ maxXyRatio
 且 kneeDfr ≥ downFrameRatioHit
 ```
-（`avgSpeedHit` 等靜態門檻在 `standards.knee.<side>`；`kDropHit/kDropRel` 在 frame。）
+（`peakSpeedHit` 等靜態門檻在 `standards.knee.<side>`；`kDropHit/kDropRel/kDropStr` 在 frame。）
 重新武裝：`kneeDy ≤ kDropRel`。另有 `cooldownMs` 節流。
 
 > 診斷心法：某一擊若各實測值都遠優於門檻 → 觸發紮實；若剛好踩線或某條靠
@@ -176,7 +177,7 @@ console.table(
       return {
         side: S,
         dy: a["kneeDy"+R], dropHit: a["kDropHit"+R],
-        sp: a["kneeSp"+R], spHit: t.avgSpeedHit,
+        strong: a["kDropStr"+R],
         pk: a["kneePk"+R], pkHit: t.peakSpeedHit,
       };
     })

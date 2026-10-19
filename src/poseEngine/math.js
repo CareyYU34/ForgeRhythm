@@ -78,35 +78,39 @@ export function handBasePointFromPoseLandmarks(landmarks, side) {
   return avg2(pinky, index);
 }
 
-export function pushPointHistory(history, point, timeSec, maxSize = 5) {
+/**
+ * 推入一點並只保留「最近 windowSec 秒」內的點。
+ * 時間窗以秒定義而非幀數：舊版固定 5 幀，30fps ≈ 133ms、15fps ≈ 267ms，
+ * 門檻的意義會隨幀率改變（低階機幾乎只能靠峰值速度觸發）。
+ */
+export function pushPointHistory(history, point, timeSec, windowSec) {
   if (!point || !Number.isFinite(timeSec)) return history ?? [];
 
   // 只保留短時間窗需要的最小資料，避免把整個 landmark 物件一路帶著走。
-  const nextHistory = [
-    ...(history ?? []),
-    {
-      x: point.x,
-      y: point.y,
-      t: timeSec,
-    },
-  ];
-
-  if (nextHistory.length > maxSize) {
-    nextHistory.splice(0, nextHistory.length - maxSize);
-  }
+  // 1ms 容差：幀間隔有抖動，避免剛好落在窗口邊界的點時有時無。
+  const minT = timeSec - windowSec - 1e-3;
+  const nextHistory = (history ?? []).filter((p) => p.t >= minT && p.t < timeSec);
+  nextHistory.push({ x: point.x, y: point.y, t: timeSec });
 
   return nextHistory;
 }
 
-export function summarizeKneeMotion(history) {
+/**
+ * 從膝蓋短時間窗摘要出判斷用特徵。
+ *
+ * @param {Array<{x,y,t}>} history
+ * @param {number} bodyScale - 身體尺度（肩寬，normalized）。位移與速度都除以它，
+ *   讓門檻不受「人離鏡頭多遠」影響。不用大腿長：坐姿下大腿朝向鏡頭、投影長度
+ *   在校準紀錄中差到 5 倍（0.056~0.285），提膝時還會再變；肩寬則穩定在 0.18~0.22。
+ */
+export function summarizeKneeMotion(history, bodyScale) {
   if (!history || history.length < 2) return null;
+  const scale = bodyScale > 1e-4 ? bodyScale : 1;
 
   // 這裡把 history 摘要成「可判斷的動作特徵」，讓上層邏輯只處理結論。
   const first = history[0];
   const last = history[history.length - 1];
-  const windowDt = Math.max(1e-4, last.t - first.t);
-  const windowDy = last.y - first.y;
-  const windowDx = Math.abs(last.x - first.x);
+  const windowDy = (last.y - first.y) / scale;
 
   let sumAbsDy = 0;
   let sumAbsDx = 0;
@@ -125,22 +129,17 @@ export function summarizeKneeMotion(history) {
 
     if (dy > 0) {
       downSegments += 1;
-      maxDownSpeed = Math.max(maxDownSpeed, dy / dt);
+      maxDownSpeed = Math.max(maxDownSpeed, dy / scale / dt);
     }
   }
 
   const segmentCount = history.length - 1;
-  const avgDownSpeed = Math.max(0, windowDy) / windowDt;
   const downFrameRatio = segmentCount > 0 ? downSegments / segmentCount : 0;
+  // 比值本身與尺度無關，不必除 scale
   const xyRatio = sumAbsDx / Math.max(sumAbsDy, 1e-4);
 
   return {
-    windowDt,
     windowDy,
-    windowDx,
-    sumAbsDx,
-    sumAbsDy,
-    avgDownSpeed,
     maxDownSpeed,
     downFrameRatio,
     xyRatio,
