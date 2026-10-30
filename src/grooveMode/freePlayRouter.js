@@ -34,11 +34,21 @@
  *
  * fill 結束時，以量到的基點與手速交給 grooveSelector 挑下一個 groove
  * （經由 engine.hit(pickNext) —— 引擎只給候選與密度，不知道時間）。
+ *
+ * ═══ 重音預覽（getUpcomingAccent）═══
+ *
+ * 畫面每幀問「接下來 n 擊有沒有 crash」，用來把手部節點畫得抬更高
+ * （poseEngine/accentPose.js）。閒置歸零也要算進去：已閒置超過 GROOVE_RESET_MS
+ * 時，下一擊會從起始 groove 開始，所以預覽前先歸零（resetIfIdle 只歸零一次，
+ * 起始 groove 隨機時，預覽與真正打下去的才會是同一個）。
  */
 
 import { createGrooveEngine } from "./grooveEngine.js";
 import { createTempoTracker } from "./tempoTracker.js";
 import { selectNextGroove } from "./grooveSelector.js";
+import { MIDI_TO_SOUND_ID } from "../audioEngine.js";
+
+const isCrash = (midi) => MIDI_TO_SOUND_ID[midi] === "crash";
 
 /** 超過這麼久沒打，回到起始 groove 第一格（ms）。約 120 BPM 下三拍。 */
 export const GROOVE_RESET_MS = 1500;
@@ -53,6 +63,15 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   const engine = createGrooveEngine();
   const tracker = createTempoTracker();
   let lastHitMs = -Infinity;
+  /** 這段閒置已歸零過（預覽與打擊共用，避免歸零兩次） */
+  let idleResetDone = false;
+
+  function resetIfIdle(nowMs) {
+    if (idleResetDone || nowMs - lastHitMs <= GROOVE_RESET_MS) return;
+    engine.reset();
+    tracker.reset();
+    idleResetDone = true;
+  }
 
   /** 給 engine 的 pickNext：補上量到的速度後交給 selector */
   function pickNext({ candidates, currentDensity, feel }) {
@@ -75,12 +94,10 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
       }
 
       const nowMs = performance.now();
-      if (nowMs - lastHitMs > GROOVE_RESET_MS) {
-        engine.reset();
-        tracker.reset();
-      }
+      resetIfIdle(nowMs);
       if (tracker.isDuplicate(nowMs)) return;
       lastHitMs = nowMs;
+      idleResetDone = false;
 
       // ⚠ 順序：先結算間隔，再走格（引擎可能在這一擊決定下一個 groove）
       tracker.hit(nowMs);
@@ -90,6 +107,25 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
       for (const midi of notes) {
         if (midi !== undefined) audio.playMidi(midi, 1);
       }
+    },
+
+    /**
+     * 接下來 n 擊內是否有 crash（左右手、左右膝各一個布林）。
+     *   節奏循環：不知道下一擊是哪隻手或膝蓋 → 全部相同。
+     *   位置對應：該部位設成 crash 就是。
+     */
+    getUpcomingAccent(n, zoneSound) {
+      if (getFreeStyle() !== "groove") {
+        return {
+          left: zoneSound.left_front === "crash",
+          right: zoneSound.right_front === "crash",
+          leftKnee: zoneSound.left_heel === "crash",
+          rightKnee: zoneSound.right_heel === "crash",
+        };
+      }
+      resetIfIdle(performance.now());
+      const on = engine.peek(n).some((notes) => notes.some(isCrash));
+      return { left: on, right: on, leftKnee: on, rightKnee: on };
     },
   };
 }

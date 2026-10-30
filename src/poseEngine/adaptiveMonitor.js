@@ -8,7 +8,9 @@
  *   2. PF 自適應：追蹤每個 zone 的 PF 低谷值，感知打擊習慣漂移並更新 PF_HIT
  *      （v2 循環式估計器，見下方「PF 低谷估計架構」）
  *   3. Knee 自適應：偵測「有踢腿意圖但未觸發」，調整 windowDropHit（只降不升；
- *      poseLoop 讓 windowDropRelease / windowDropStrongHit 隨它等比縮放）
+ *      poseLoop 讓 windowDropRelease / windowDropStrongHit 隨它等比縮放）。
+ *      ⚠ 手部打擊後 KNEE_HAND_GATE_MS 內不累計近失：手打會帶動兩膝節點同步上下晃
+ *        （實測約 0.1 肩寬，剛好落在近失區間），若照算會把門檻一路降到下限而誤觸。
  *   4. Visibility 自適應：根據節點歷史可見度，動態調整全域 visibilityThreshold
  *   5. 手部 near-miss 升級：偵測「有下擊但差一點才觸發」，把 PF_HIT 往上推（只升不降），
  *      解開「力道到不了 PF_HIT → 沒有成功樣本 → PF_HIT 卡死打不出來」的死結。
@@ -103,6 +105,11 @@ const MONITOR_TUNING = {
   KNEE_ADJUST_COOLDOWN_MS: 3000, // 兩次調整間的冷卻期（ms）
   KNEE_ADJUST_FACTOR: 0.9, // 每次調整的乘數（降低 10%）
   KNEE_ADJUST_MIN_RATIO: 0.5, // 相對初始值的最低比例
+  // 手部打擊後這段時間內不累計膝蓋近失（ms）。
+  // 實測（poseLog 2026-10-19）：手打後約 50–200ms 兩膝節點同步晃動 0.04–0.08 肩寬、
+  // 偶爾到 0.13，落在近失區間（0.7–1.0 × 0.14）；不擋的話 68 秒內門檻從 0.14 降到 0.07，
+  // 右膝誤觸 16 次。只擋近失計數，不擋踢腿判斷本身。
+  KNEE_HAND_GATE_MS: 400,
 
   // Visibility 自適應
   VIS_HISTORY_FRAMES: 150, // visibility 歷史 buffer 大小（約 5s @ 30fps）
@@ -734,6 +741,14 @@ export function createAdaptiveMonitor({ state }) {
     // 冷卻期間跳過
     if (nowMs - tracker.lastAdjustMs < MONITOR_TUNING.KNEE_ADJUST_COOLDOWN_MS)
       return;
+
+    // 手部剛打過：這段時間的膝蓋位移多半是手打帶動的晃動，不是「想踢沒踢中」。
+    // lastHitMs 與 nowMs 同為 performance.now()。
+    const lastHandHitMs = Math.max(
+      state.leftState?.lastHitMs ?? -Infinity,
+      state.rightState?.lastHitMs ?? -Infinity,
+    );
+    if (nowMs - lastHandHitMs < MONITOR_TUNING.KNEE_HAND_GATE_MS) return;
 
     // history 不足兩點 = 剛被 clearTrackingHistory 清掉，poseLoop 本幀沒有算特徵，
     // kneeState 裡的 windowDy 是舊值，不能拿來累積近失。

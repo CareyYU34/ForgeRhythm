@@ -31,6 +31,8 @@ import { createCalibrationEngine } from "./poseEngine/calibration.js";
 import { buildCalibrationProfile } from "./poseEngine/calibrationProfile.js";
 import { createAdaptiveMonitor } from "./poseEngine/adaptiveMonitor.js";
 import { perfLog } from "./poseEngine/perfLog.js";
+import { ACCENT_LOOKAHEAD_HITS } from "./poseEngine/accentPose.js";
+import { createHitEffectManager } from "./poseEngine/hitEffects.js";
 
 // ── 歌曲模式 ──
 import { SONG_LIBRARY } from "./songMode/manifest.js";
@@ -275,6 +277,14 @@ const hitRouter = createHitRouter({
   getTransport: getActiveTransport,
   // 讀取當下設定（可在遊玩中切換，故用 getter 而非快照）
   getLimbMode: getEffectiveLimbMode,
+  freePlayAccent: freePlayRouter.getUpcomingAccent,
+});
+
+// 打擊特效：發出 crash 的那一擊改畫衝擊波。
+// ⚠ 只在打擊派發期（playZone → pushHandHit / pushKneeHit 之間）同步通知，見 hitEffects.js。
+const hitEffects = createHitEffectManager();
+audioEngine.setHitSoundListener((soundId) => {
+  if (soundId === "crash") hitEffects.markCrash();
 });
 
 const predictWebcam = createPredictWebcam({
@@ -288,6 +298,13 @@ const predictWebcam = createPredictWebcam({
   //   簽章與 playZone 完全一致，因此 poseEngine/ 一行都不用改。
   playZone: hitRouter.route,
   zoneSound,
+  hitEffectManager: hitEffects,
+  // 重音抬手／提膝：接下來幾擊有 crash → 畫面上的手臂、膝蓋節點抬更高（只影響畫面）
+  // 膝蓋觸發關閉時膝蓋打不出重音 → 不提膝
+  getAccentTarget: () => {
+    const t = hitRouter.getUpcomingAccent(ACCENT_LOOKAHEAD_HITS, zoneSound);
+    return state.kneeTriggerEnabled ? t : { ...t, leftKnee: false, rightKnee: false };
+  },
   // 每幀 pose callback 裡會呼叫這個，把 landmarks 餵給校準引擎與監控引擎
   onFrame: (poseLandmarks, nowMs) => {
     calibration.feedFrame(poseLandmarks, nowMs);
@@ -384,9 +401,9 @@ function setSongDifficulty(value) {
 /**
  * 匯出診斷 log 成 JSON 檔（本地端限定，按鈕由設定面板渲染）。
  * 直接觸發下載，不經外部服務。
+ * @param {Object} [log]  預設匯出全部 run；手動記錄結束時只傳那一個 run（同樣包成 { runs }）
  */
-function exportPoseLog() {
-  const log = perfLog.getLog();
+function exportPoseLog(log = perfLog.getLog()) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const blob = new Blob([JSON.stringify(log, null, 2)], {
     type: "application/json",
@@ -403,11 +420,39 @@ function exportPoseLog() {
 }
 
 // ── 診斷紀錄的開關（本地端限定，見 poseEngine/perfLog.js）──
-// hudLoop 每幀偵測「是否正在演奏」的邊緣，進入時 begin、離開時 end。
-// 離開涵蓋歌曲結束 / 退出 / 關鏡頭 —— 全都算一次「中斷」。
+//
+// 自動：hudLoop 每幀偵測「是否正在演奏」的邊緣，進入時 begin、離開時 end。
+//   離開涵蓋歌曲結束 / 退出 / 關鏡頭 —— 全都算一次「中斷」。
+// 手動：設定面板按鈕切換（toggleManualPerfLog）。手動記錄中自動記錄暫停，
+//   歌曲播放／停止改記成 run.events，整段收在同一個 run。
+
+/** 共用的情境快照：自動與手動 run 的 meta、以及設定變化 event 都用這份 */
+function perfLogSettings() {
+  return {
+    kneeTriggerEnabled: state.kneeTriggerEnabled,
+    limbMode: state.limbMode, // 使用者選的值
+    limbModeEffective: getEffectiveLimbMode(), // 實際生效（膝蓋關閉時一律 off）
+    freeStyle: state.freeStyle,
+    difficulty: state.songDifficulty,
+  };
+}
+
 let _perfLogPlaying = false;
+let _perfLogManual = false;
 function syncPerfLog(session, playing) {
   if (!perfLog.isLocal()) return;
+  if (_perfLogManual) {
+    // 手動記錄中：不開新 run，只記播放邊緣
+    if (playing !== _perfLogPlaying) {
+      const song = session?.getSong?.();
+      perfLog.event(playing ? "play" : "stop", {
+        song: song?.title ?? null,
+        mode: song?.mode ?? null,
+      });
+      _perfLogPlaying = playing;
+    }
+    return;
+  }
   if (playing && !_perfLogPlaying) {
     const song = session?.getSong?.();
     const chart = session?.getChart?.();
@@ -415,14 +460,37 @@ function syncPerfLog(session, playing) {
       song: song?.title ?? null,
       mode: song?.mode ?? "song",
       selectedMidi: chart?.selectedMidi ?? null,
-      limbMode: state.limbMode,
-      difficulty: state.songDifficulty,
+      ...perfLogSettings(),
     });
     _perfLogPlaying = true;
   } else if (!playing && _perfLogPlaying) {
     perfLog.end("stopped");
     _perfLogPlaying = false;
   }
+}
+
+/** 設定面板「開始記錄 log」：開始 → 再按一次停止並匯出這個 run。回傳是否正在記錄。 */
+function toggleManualPerfLog() {
+  if (!_perfLogManual) {
+    // 自動 run 進行中會被 begin() 以 superseded 收尾；之後播放狀態改由手動 run 以 event 追蹤
+    const session = getActiveSession();
+    const playing = !!(session && session.isPlaying());
+    perfLog.begin({ mode: "manual", playingAtStart: playing, ...perfLogSettings() });
+    _perfLogManual = true;
+    _perfLogPlaying = playing;
+    return true;
+  }
+  const run = perfLog.end("manual");
+  _perfLogManual = false;
+  // 若還在播放，下一幀 hudLoop 會照常開一個新的自動 run
+  _perfLogPlaying = false;
+  if (run) exportPoseLog({ runs: [run] });
+  return false;
+}
+
+/** 設定在記錄中途改變時記一筆（沒在記錄則 no-op） */
+function logSettingChange(key, value) {
+  perfLog.event("setting", { key, value, settings: perfLogSettings() });
 }
 
 function hudLoop() {
@@ -527,9 +595,11 @@ async function bootstrap() {
     },
     onLimbModeChange: (value) => {
       state.limbMode = value;
+      logSettingChange("limbMode", value);
     },
     onFreeStyleChange: (value) => {
       state.freeStyle = value;
+      logSettingChange("freeStyle", value);
     },
     // 難度切換於「下次載入譜面」時生效（重新選歌）。
     onAdvancedDifficultyChange: (value) => {
@@ -562,10 +632,12 @@ async function bootstrap() {
     },
     onKneeTriggerChange: (value) => {
       state.kneeTriggerEnabled = value;
+      logSettingChange("kneeTriggerEnabled", value);
     },
     // 匯出 log 按鈕只在本地端出現（線上 perfLog.isLocal() 為 false）。
     showExportLog: perfLog.isLocal(),
-    onExportLog: exportPoseLog,
+    onExportLog: () => exportPoseLog(),
+    onToggleRecordLog: toggleManualPerfLog,
   });
 
   // 影片控制列速度變更時，反向同步到設定面板的速度選單，維持兩邊一致。

@@ -301,6 +301,8 @@ export function initSettingsPanel({
   // showExportLog 為 true 時才渲染「匯出 log」按鈕，點擊呼叫 onExportLog。
   showExportLog = false,
   onExportLog,
+  // 手動記錄：點一下開始、再點一下停止並匯出。回傳切換後是否正在記錄。
+  onToggleRecordLog,
 }) {
   const controlsEl = panelEl.querySelector("#runtimeControls");
   const debugControlsEl = panelEl.querySelector("#debugControls");
@@ -450,11 +452,25 @@ export function initSettingsPanel({
     );
 
     // 匯出診斷 log —— 只在本地端出現（showExportLog 由 main 傳 perfLog.isLocal()）。
+    if (showExportLog && typeof onToggleRecordLog === "function") {
+      const recordRow = createButtonControl({
+        id: "recordLogBtn",
+        label: "開始記錄 log",
+        onClick: () => {
+          const recording = onToggleRecordLog();
+          const btn = recordRow.querySelector("button");
+          btn.textContent = recording ? "● 停止並匯出 log" : "開始記錄 log";
+          btn.classList.toggle("is-recording", recording);
+        },
+      });
+      debugControlsEl.appendChild(recordRow);
+    }
+
     if (showExportLog && typeof onExportLog === "function") {
       debugControlsEl.appendChild(
         createButtonControl({
           id: "exportLogBtn",
-          label: "匯出 log",
+          label: "匯出全部 log",
           onClick: onExportLog,
         }),
       );

@@ -9,10 +9,28 @@
  *   fx.pushHandHit({ side, zone, hip, hand, knee, strength });
  *   fx.pushKneeHit({ side, knee, strength });
  *   fx.draw(canvasCtx, nowMs);
+ *
+ * Crash 衝擊波：
+ *   fx.markCrash();  // 這一擊發出 crash 時呼叫（main.js 由 audioEngine 的打擊聲監聽轉來）
+ *   ⚠ 本模組不知道發了什麼音（poseLoop 只透過 playZone 接點派發）。
+ *     poseLoop 是「playZone → pushHandHit / pushKneeHit」同步依序執行，所以 markCrash
+ *     會落在兩者之間，緊接著的 push 取用旗標，改畫 crash 衝擊波（手、膝蓋同一套，
+ *     中心點分別是手掌、膝蓋）。
+ *     旗標超過 CRASH_MARK_TTL_MS 沒被取用就作廢（例如該擊沒畫特效），不會殘留到之後的打擊。
  */
 
 const HAND_DURATION_MS = 1100;
 const KICK_DURATION_MS = 950;
+
+// ── Crash 衝擊波（大白光 + 兩道衝擊波 + 往上噴、受重力落下的火花）──
+const CRASH_DURATION_MS = 1200;
+/** 整體大小倍率（衝擊波半徑、火花速度與長度都乘它） */
+const CRASH_SIZE = 0.5;
+const CRASH_SPARK_COUNT = 36;
+/** 火花重力（px/s²，× CRASH_SIZE） */
+const CRASH_GRAVITY = 900;
+/** markCrash 旗標的有效期：同一次派發內必定用掉，留一點餘裕即可 */
+const CRASH_MARK_TTL_MS = 50;
 
 // ── 色彩主題（左手 vs 右手 vs 膝蓋）────────────────────────────────────────
 
@@ -28,6 +46,10 @@ const SIDE_COLORS = {
   knee: {
     primary: [255, 230, 0],
     secondary: [255, 130, 0],
+  },
+  crash: {
+    primary: [255, 205, 70],
+    secondary: [255, 250, 225],
   },
 };
 
@@ -184,6 +206,78 @@ function drawHandHit(ctx, ef, t) {
   ctx.restore();
 }
 
+// ── Crash 衝擊波 ─────────────────────────────────────────────────────────────
+
+/** 火花：往上方 ±135° 噴出，速度隨機 */
+function createCrashSparks(cx, cy, s) {
+  const sparks = [];
+  for (let i = 0; i < CRASH_SPARK_COUNT; i++) {
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.5;
+    const speed = (180 + Math.random() * 260) * s;
+    sparks.push({
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.5 + Math.random() * 0.5,
+      len: 6 + Math.random() * 10,
+    });
+  }
+  return sparks;
+}
+
+function drawCrashHit(ctx, ef, t) {
+  const { px, s } = ef;
+  const { x, y } = px;
+  const c = SIDE_COLORS.crash;
+
+  // 大白光（前 30%）
+  if (t < 0.3) {
+    const lt = t / 0.3;
+    const r = 150 * s * (0.6 + lt * 0.4);
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, rgba([255, 255, 255], 0.95 * (1 - lt)));
+    grad.addColorStop(0.4, rgba(c.primary, 0.5 * (1 - lt)));
+    grad.addColorStop(1, rgba(c.primary, 0));
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  // 兩道粗衝擊波：[延遲, 最大半徑, 起始線寬]
+  for (const [delay, maxR, w0] of [
+    [0, 260, 12],
+    [0.12, 190, 6],
+  ]) {
+    const lt = (t - delay) / 0.7;
+    if (lt <= 0 || lt >= 1) continue;
+    ctx.beginPath();
+    ctx.arc(x, y, easeOutQuart(lt) * maxR * s, 0, Math.PI * 2);
+    ctx.strokeStyle = rgba(delay ? c.secondary : c.primary, (1 - lt) * 0.9);
+    ctx.lineWidth = Math.max(0.5, w0 * s * (1 - lt));
+    ctx.stroke();
+  }
+
+  // 火花：拋物線（以秒計），畫成沿速度方向的短線
+  const durSec = ef.durationMs / 1000;
+  const g = CRASH_GRAVITY * s;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 2.5 * s;
+  for (const p of ef.sparks) {
+    const lt = t / p.life;
+    if (lt >= 1) continue;
+    const tt = t * durSec;
+    const px = x + p.vx * tt;
+    const py = y + p.vy * tt + 0.5 * g * tt * tt;
+    const vy = p.vy + g * tt;
+    const vl = Math.hypot(p.vx, vy) || 1;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px - (p.vx / vl) * p.len * s, py - (vy / vl) * p.len * s);
+    ctx.strokeStyle = rgba(lt < 0.3 ? c.secondary : c.primary, 1 - lt);
+    ctx.stroke();
+  }
+}
+
 // ── 膝蓋踢 ───────────────────────────────────────────────────────────────────
 
 function drawKick(ctx, ef, t) {
@@ -240,6 +334,35 @@ function drawKick(ctx, ef, t) {
 
 export function createHitEffectManager() {
   const effects = [];
+  /** markCrash 的時間（null = 無）；緊接著的 pushHandHit / pushKneeHit 取用 */
+  let crashMarkMs = null;
+
+  function markCrash() {
+    crashMarkMs = performance.now();
+  }
+
+  /** 取用並清除 crash 旗標；過期視為沒有 */
+  function takeCrashMark() {
+    const ok =
+      crashMarkMs !== null &&
+      performance.now() - crashMarkMs <= CRASH_MARK_TTL_MS;
+    crashMarkMs = null;
+    return ok;
+  }
+
+  /** crash 衝擊波（手、膝蓋共用），中心點 px 為 canvas 座標 */
+  function pushCrash(side, zone, px) {
+    effects.push({
+      type: "crash",
+      side,
+      zone,
+      px,
+      s: CRASH_SIZE,
+      sparks: createCrashSparks(px.x, px.y, CRASH_SIZE),
+      startMs: performance.now(),
+      durationMs: CRASH_DURATION_MS,
+    });
+  }
 
   function pushHandHit({
     side,
@@ -255,6 +378,11 @@ export function createHitEffectManager() {
     const handPx = toCanvas(hand, rect);
 
     if (!isReasonableCanvasPx(handPx, rect)) return false;
+
+    if (takeCrashMark()) {
+      pushCrash(side, zone, handPx);
+      return true;
+    }
 
     const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
     const colors = SIDE_COLORS[side] ?? SIDE_COLORS.right;
@@ -273,12 +401,19 @@ export function createHitEffectManager() {
   }
 
   function pushKneeHit({ side, knee, strength, getVideoDrawRect }) {
+    // ⚠ 早退前就要取用旗標：沒畫特效也要作廢，不能殘留給下一擊
+    const crash = takeCrashMark();
     if (!knee) return false;
     const rect = getVideoDrawRect();
     const cx = rect.x + knee.x * rect.width;
     const cy = rect.y + knee.y * rect.height;
 
     if (!isReasonableCanvasPx({ x: cx, y: cy }, rect)) return false;
+
+    if (crash) {
+      pushCrash(side, "heel", { x: cx, y: cy });
+      return true;
+    }
 
     const str = Math.max(0.35, Math.min(1, strength ?? 0.85));
 
@@ -308,10 +443,11 @@ export function createHitEffectManager() {
 
       ctx.save();
       if (ef.type === "hand") drawHandHit(ctx, ef, t);
+      else if (ef.type === "crash") drawCrashHit(ctx, ef, t);
       else if (ef.type === "kick") drawKick(ctx, ef, t);
       ctx.restore();
     }
   }
 
-  return { pushHandHit, pushKneeHit, draw };
+  return { pushHandHit, pushKneeHit, markCrash, draw };
 }

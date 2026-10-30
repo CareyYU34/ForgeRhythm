@@ -7,8 +7,13 @@
  *
  *   1. 只在本地端（localhost / 127.0.0.1 / file://）執行。線上一律 no-op，
  *      poseLoop 每幀只多一次布林判斷，零額外開銷。
- *   2. 只在「開始演奏後」記錄 —— 由 main.js 在 session 進入 PLAYING 時 begin()、
- *      離開時 end()（歌曲結束 / 退出 / 關鏡頭都算中斷）。
+ *   2. 兩種記錄方式（main.js）：
+ *      · 自動：session 進入 PLAYING 時 begin()、離開時 end()
+ *        （歌曲結束 / 退出 / 關鏡頭都算中斷）。
+ *      · 手動：設定面板「開始記錄 log」→ begin()，再按一次 → end() 並匯出這個 run。
+ *        手動記錄中，自動記錄暫停（整段收在同一個 run，歌曲播放／停止改記成 event）。
+ *   2b. 設定在記錄中途改變（膝蓋觸發、部位配對、打法）時，記一筆 event()
+ *      到 run.events —— 逐幀資料只看得到「當下」，event 才看得出「何時變的」。
  *   3. 逐幀把重要數值收進緩衝；每次「打擊」或「中斷」把緩衝那一段 commit 進
  *      log dict（segments）。於是每個 segment = 「上一次打擊到這次打擊之間的
  *      逐幀軌跡 + 終結這段的那次打擊」，最適合回頭看「打下去前 PF 怎麼走的」。
@@ -32,7 +37,7 @@
  *   animShowT 下一個 rAF 時間戳（≈ 該畫面被呈現）
  *
  *   console：__poseTiming() 印出每一擊的各段延遲表。
- *   自由模式也想錄：__poseLogBegin() 開始、__poseLogEnd() 結束。
+ *   自由模式也想錄：設定面板「開始記錄 log」，或 console __poseLogBegin() / __poseLogEnd()。
  */
 
 function detectLocal() {
@@ -133,6 +138,9 @@ export const perfLog = {
       // 觸發標準的參考快照（靜態門檻只記一次；會被 adaptiveMonitor 漂移的
       // 動態門檻另外逐幀記在 frame 裡，才看得出「與現實差多少 + 調整軌跡」）。
       standards: null,
+      // 記錄中途的設定變化／播放邊緣：{ t, type, ...data }
+      // （t = performance.now() ms，與 frame.t 同一時間軸）
+      events: [],
       segments: [],
     };
     pending = [];
@@ -141,6 +149,17 @@ export const perfLog = {
     lastFrame = null;
     running = true;
     logDict.runs.push(current);
+  },
+
+  /** 是否正在記錄（不論自動或手動）。 */
+  isRunning() {
+    return IS_LOCAL && running;
+  },
+
+  /** 記一筆事件到當前 run（沒在記錄則 no-op）。 */
+  event(type, data = {}) {
+    if (!running || !current) return;
+    current.events.push({ t: Math.round(performance.now()), type, ...data });
   },
 
   /** 這個 run 是否還沒記過觸發標準（讓呼叫端只在需要時才建那個物件）。 */
@@ -183,7 +202,10 @@ export const perfLog = {
 
   /** audioEngine 發出打擊聲時呼叫；只在派發期內掛到當前這一擊。 */
   noteSound(info) {
-    if (!dispatchRec?.timing || dispatchRec.timing.sound) return;
+    if (!dispatchRec?.timing) return;
+    // 一擊可能發多個音（例如 kick+crash）：音色全記在 sounds，延遲只記第一個
+    if (info.id) (dispatchRec.sounds ??= []).push(info.id);
+    if (dispatchRec.timing.sound) return;
     dispatchRec.timing.sound = info;
   },
 
@@ -228,9 +250,10 @@ export const perfLog = {
     return rows;
   },
 
-  /** 中斷 / 結束時呼叫：commit 殘餘緩衝並收尾 run。 */
+  /** 中斷 / 結束時呼叫：commit 殘餘緩衝並收尾 run。回傳收尾的 run（沒在記錄回傳 null）。 */
   end(reason = "end") {
-    if (!IS_LOCAL || !running || !current) return;
+    if (!IS_LOCAL || !running || !current) return null;
+    const run = current;
     commit({ type: "end", reason });
     current.endedAt = Date.now();
     current.endReason = reason;
@@ -249,6 +272,7 @@ export const perfLog = {
     pending = [];
     lastFrame = null;
     dispatchRec = null;
+    return run;
   },
 
   getLog() {

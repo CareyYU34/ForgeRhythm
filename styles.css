@@ -1798,3 +1798,11 @@ body {
 .settings-action-btn:active {
   transform: translateY(1px);
 }
+/* 手動記錄 log 進行中 */
+.settings-action-btn.is-recording {
+  background: rgba(220, 50, 50, 0.35);
+  border-color: rgba(255, 90, 90, 0.8);
+}
+.settings-action-btn.is-recording:hover {
+  background: rgba(220, 50, 50, 0.5);
+}

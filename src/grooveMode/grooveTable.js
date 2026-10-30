@@ -8,8 +8,16 @@
  *
  * steps：以空白分隔的音名，一個音名 = 一擊。
  *        同時發聲用 "+" 連接，例如 "kick+ride"。
- *        ⚠ 每一擊都一定會發聲（打一下走一格），所以沒有休止符；
- *          休止的長度併進前一擊的時值（見下）。
+ *        ⚠ 每一擊都一定會發聲（打一下走一格）。
+ *
+ * 休止：寫 "rest"，時值寫法同音名（"rest/16"、"rest/8."，沒寫 = unit）。
+ *        rest 不是一擊、不用打：它的長度併進前一擊，只影響 BPM 換算與密度。
+ *        所以 "kick/16 rest/8" 與 "kick/8." 完全等價，照譜面習慣寫即可。
+ *        ⚠ groove 開頭的 rest 併進一輪的最後一擊；過門不能以 rest 開頭。
+ *        ⚠ 過門的時值（含 rest）不影響任何判斷：fill 手速只看每秒幾擊，
+ *          下一個 groove 在過門最後一擊當下就決定。所以過門結尾的 rest
+ *          只是讓譜面補滿一小節，下一個 groove 照樣在使用者下一擊接上。
+ *        ⚠ rest 不能跟音名用 "+" 連接，land 也不能是 rest。
  *
  * 時值：音名後面接 "/幾分音符"，附點加 "."；沒寫 = 該項的 unit。
  *        "hihat+kick/8"  八分
@@ -17,6 +25,7 @@
  *        "kick/8."       附點八分（= 3 個十六分）
  *        "crash/4"       四分（含後面的休止）
  *        時值只用來換算速度（BPM），不影響「打一下走一格」。
+ *        慣例：unit 設成該項最常出現的時值，只有例外才標。
  *
  * GROOVES 每一項：
  *   unit   最小單位是幾分音符（8 或 16），也是 steps 時值的預設值
@@ -113,7 +122,7 @@ export const GROOVES = {
     unit: 8,
     rate: 0.75,
     steps:
-      "hihat+kick/8. hihat+kick/8. hihat+snare hihat+kick/8. hihat+kick/8. hihat+snare",
+      "hihat+kick/8. hihat+kick/16 rest hihat+snare hihat+kick/8. hihat+kick/16 rest hihat+snare",
     loops: [2, 4],
     fill: ["slowToms", "tomsDown8"],
     next: ["basic", "offbeat"],
@@ -172,7 +181,7 @@ export const FILLS = {
   snare4: {
     unit: 8,
     feel: "same",
-    steps: "snare+snare snare+snare snare+snare snare+snare",
+    steps: "snare+snare snare+snare snare+snare snare+snare rest/2",
     land: "crash",
   },
   // 動打動打 打打打打 → 下一段第 1 拍 crash
@@ -209,7 +218,7 @@ export const FILLS = {
   half16: {
     unit: 16,
     feel: "faster",
-    steps: "snare tom1 tom2 floor snare tom1 tom2 floor",
+    steps: "snare tom1 tom2 floor snare tom1 tom2 floor rest/2",
     land: ["kick+crash", "crash"],
   },
   // 切分 tom：S 1、T1 1& 1a、T2 2（附點）、F 2a 3、K 3&、F 4、K 4&

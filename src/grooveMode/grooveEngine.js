@@ -13,6 +13,13 @@
  *      若過門有 land（陣列則隨機），取代新 groove 的第一擊（例如 kick → kick+crash）。
  *   4. reset() → 回到 START_GROOVE 第一格（未落地的 land 一併丟棄）。
  *
+ * ═══ 預覽（peek）═══
+ *
+ * 畫面要提前知道「接下來幾擊有沒有 crash」（重音抬手，見 poseEngine/accentPose.js），
+ * 所以過門與 land 在進入 groove 時就先挑好（plannedFill / plannedLand），
+ * peek 才看得到。過門結束後的 groove 由 pickNext 依當下速度決定，事先不知道 ——
+ * peek 只回傳到 land 為止（回傳長度可能少於要求）。
+ *
  * ═══ 刻意不知道時間 ═══
  *
  * 與 songMode/sequencer.js 同一個原則：本模組沒有時鐘。
@@ -47,18 +54,29 @@ function parseToken(token) {
 /** 幾分音符 → 拍數（四分音符 = 1 拍） */
 const toBeats = (value, dotted) => (4 / value) * (dotted ? 1.5 : 1);
 
-/** "kick hihat/16 kick+ride" → [{ notes: [36], beats }, ...] */
+/** 休止符的音名 */
+const REST = "rest";
+
+/**
+ * "kick hihat/16 rest kick+ride" → [{ notes: [36], beats }, ...]
+ * rest 不是一擊：它的拍數併進前一擊（打一下走一格不變）。
+ * 開頭的 rest 沒有前一擊 → 併進一輪的最後一擊（groove 循環時剛好接上）。
+ */
 function parseSteps(text, unit) {
-  return text
-    .trim()
-    .split(/\s+/)
-    .map((token) => {
-      const { names, value, dotted } = parseToken(token);
-      return {
-        notes: names.map((name) => SOUNDS[name]),
-        beats: toBeats(value ?? unit, dotted),
-      };
-    });
+  const steps = [];
+  let leadingRestBeats = 0;
+  for (const token of text.trim().split(/\s+/)) {
+    const { names, value, dotted } = parseToken(token);
+    const beats = toBeats(value ?? unit, dotted);
+    if (names[0] === REST) {
+      if (steps.length) steps[steps.length - 1].beats += beats;
+      else leadingRestBeats += beats;
+      continue;
+    }
+    steps.push({ notes: names.map((name) => SOUNDS[name]), beats });
+  }
+  if (steps.length) steps[steps.length - 1].beats += leadingRestBeats;
+  return steps;
 }
 
 const pick = (v) => (Array.isArray(v) ? v[Math.floor(Math.random() * v.length)] : v);
@@ -71,17 +89,27 @@ function validateTable() {
   const checkUnit = (where, unit) => {
     if (!NOTE_VALUES.includes(unit)) warn(`${where}: unit 必須是 ${NOTE_VALUES.join("/")}`);
   };
-  /** 檢查 steps（withDuration=false 用於 land：不能寫時值） */
-  const checkSteps = (where, text, withDuration = true) => {
-    for (const token of text.trim().split(/\s+/)) {
+  /**
+   * 檢查 steps（withDuration=false 用於 land：不能寫時值、不能有 rest）
+   * isFill=true：過門只播一次，開頭的 rest 沒有上一輪可以併 → 警告
+   */
+  const checkSteps = (where, text, withDuration = true, isFill = false) => {
+    const tokens = text.trim().split(/\s+/);
+    if (tokens.every((t) => parseToken(t).names[0] === REST)) warn(`${where}: 至少要有一擊`);
+    tokens.forEach((token, i) => {
       const { names, value } = parseToken(token);
-      for (const name of names) {
-        if (!(name in SOUNDS)) warn(`${where}: 未知音名 "${name}"`);
+      if (names.includes(REST)) {
+        if (names.length > 1) warn(`${where}: rest 不能與音名同時寫 "${token}"`);
+        else if (!withDuration) warn(`${where}: land 不能是 rest`);
+        else if (isFill && i === 0) warn(`${where}: 過門不能以 rest 開頭`);
       }
-      if (value === null) continue;
+      for (const name of names) {
+        if (name !== REST && !(name in SOUNDS)) warn(`${where}: 未知音名 "${name}"`);
+      }
+      if (value === null) return;
       if (!withDuration) warn(`${where}: land 不寫時值 "${token}"`);
       else if (!NOTE_VALUES.includes(value)) warn(`${where}: 時值不合法 "${token}"`);
-    }
+    });
   };
 
   for (const s of asList(START_GROOVE)) {
@@ -115,7 +143,7 @@ function validateTable() {
   for (const [id, f] of Object.entries(FILLS)) {
     const where = `FILLS.${id}`;
     checkUnit(where, f.unit);
-    checkSteps(where, f.steps);
+    checkSteps(where, f.steps, true, true);
     if (!["faster", "same", "slower"].includes(f.feel)) {
       warn(`${where}: feel 必須是 "faster"｜"same"｜"slower"`);
     }
@@ -139,12 +167,19 @@ export function createGrooveEngine() {
   let grooveId, fillId, step, loopCount, loopTarget;
   /** 待取代下一擊的音（過門的 land），落地後清空 */
   let pendingLand;
+  /** 這個 groove 循環完要進的過門、與過門結束時的 land（進入 groove 時先挑好，peek 用） */
+  let plannedFill, plannedLand;
 
-  /** 進入某個 groove：輪數歸零並挑這次要循環幾輪 */
+  /** land 設定 → 一擊的音："kick+crash" → [36, 49]；沒寫 land → []（不取代） */
+  const landNotes = (land) => (land ? pick(land).split("+").map((name) => SOUNDS[name]) : []);
+
+  /** 進入某個 groove：輪數歸零並挑這次要循環幾輪、之後的過門與 land */
   function enterGroove(id) {
     grooveId = id;
     loopCount = 0;
     loopTarget = pick(GROOVES[id].loops);
+    plannedFill = pick(GROOVES[id].fill);
+    plannedLand = landNotes(FILLS[plannedFill]?.land);
   }
 
   function reset() {
@@ -176,10 +211,9 @@ export function createGrooveEngine() {
     if (step >= steps.length) {
       step = 0;
       if (fillId) {
-        // 過門結束 → 換 groove；land（一擊的內容）留給新 groove 的第一擊：
-        // "kick+crash" → [36, 49]；沒寫 land → []（不取代）
-        const { land, feel } = FILLS[fillId];
-        pendingLand = land ? pick(land).split("+").map((name) => SOUNDS[name]) : [];
+        // 過門結束 → 換 groove；land（一擊的內容，進入 groove 時已挑好）留給新 groove 的第一擊
+        const { feel } = FILLS[fillId];
+        pendingLand = plannedLand;
         fillId = null;
         const next = GROOVES[grooveId].next;
         enterGroove(
@@ -192,10 +226,34 @@ export function createGrooveEngine() {
             : pick(next),
         );
       } else if (++loopCount >= loopTarget) {
-        fillId = pick(GROOVES[grooveId].fill);
+        fillId = plannedFill;
       }
     }
     return { notes, beats, inFill };
+  }
+
+  /**
+   * 預覽接下來 n 擊的音（不改變狀態）。
+   * 過門結束後的 groove 尚未決定，只看到 land 為止，回傳長度可能少於 n。
+   *
+   * @returns {number[][]} 每擊的 MIDI 音高陣列
+   */
+  function peek(n) {
+    const out = [];
+    let f = fillId, s = step, lc = loopCount, land = pendingLand;
+    while (out.length < n) {
+      const steps = f ? fillSteps[f] : grooveSteps[grooveId];
+      out.push(land.length ? land : steps[s].notes);
+      land = [];
+      if (++s < steps.length) continue;
+      s = 0;
+      if (f) {
+        if (plannedLand.length && out.length < n) out.push(plannedLand);
+        break;
+      }
+      if (++lc >= loopTarget) f = plannedFill;
+    }
+    return out;
   }
 
   /** 除錯用：目前位置 */
@@ -203,5 +261,5 @@ export function createGrooveEngine() {
     return { grooveId, fillId, step, loopCount, loopTarget };
   }
 
-  return { hit, reset, getPosition };
+  return { hit, peek, reset, getPosition };
 }

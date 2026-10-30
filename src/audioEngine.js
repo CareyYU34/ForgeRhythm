@@ -181,6 +181,13 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
   let ready = false;
 
   /**
+   * 打擊聲監聽（畫面特效用：crash 改畫衝擊波，見 hitEffects.js markCrash）。
+   * 只在 playZone / playMidi 通知 —— 這兩個只在打擊派發期內被同步呼叫；
+   * 引導音與背景伴奏不通知。
+   */
+  let hitSoundListener = null;
+
+  /**
    * 已排程但尚未播完的節點。
    *
    * ⚠ 只收「排程」的節點（scheduleCue），不收立即觸發的打擊音。
@@ -243,7 +250,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
    * @param {string} kind  "zone" | "midi" | "cue"
    * @param {number} when  src.start() 的 AudioContext 秒數
    */
-  function noteHitSound(kind, when) {
+  function noteHitSound(kind, when, id = null) {
     if (!perfLog.isActive()) return;
     const callT = performance.now();
     const baseMs = (audioCtx.baseLatency ?? 0) * 1000;
@@ -257,6 +264,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     }
     perfLog.noteSound({
       kind,
+      id,
       callT,
       outT,
       outEstT: callT + Math.max(0, (when - audioCtx.currentTime) * 1000) + baseMs + outMs,
@@ -283,7 +291,8 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     src.buffer = buf;
     src.connect(masterGain);
     src.start(audioCtx.currentTime);
-    noteHitSound("zone", audioCtx.currentTime);
+    noteHitSound("zone", audioCtx.currentTime, id);
+    hitSoundListener?.(id);
   }
 
   /**
@@ -312,7 +321,8 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     }
 
     src.start(audioCtx.currentTime);
-    noteHitSound("midi", audioCtx.currentTime);
+    noteHitSound("midi", audioCtx.currentTime, id);
+    hitSoundListener?.(id);
     return true;
   }
 
@@ -446,10 +456,16 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     return ready;
   }
 
+  /** @param {((soundId: string) => void) | null} fn */
+  function setHitSoundListener(fn) {
+    hitSoundListener = fn;
+  }
+
   return {
     initAudio,
     playZone,
     setOutputVolume,
+    setHitSoundListener,
     // ── 歌曲模式 ──
     playMidi,
     scheduleMidi,

@@ -12,7 +12,7 @@ export function monitoringTriggerConditions(
 
   if (!State) State = {};
   if (State.lastHitMs == null) State.lastHitMs = -Infinity;
-  if (State.canHit == null) State.canHit = true;
+  if (State.canHit == null) State.canHit = false;
   if (State.strokePeakPF == null) State.strokePeakPF = PF;
   if (State.strokeSpeedMax == null) State.strokeSpeedMax = 0;
 
@@ -97,7 +97,7 @@ export function monitoringKneeKickConditions(
 
   if (!state) state = {};
   if (state.lastHitMs == null) state.lastHitMs = -Infinity;
-  if (state.canHit == null) state.canHit = true;
+  if (state.canHit == null) state.canHit = false;
 
   const { windowDy, maxDownSpeed, downFrameRatio, xyRatio } = metrics;
 

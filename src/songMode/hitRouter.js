@@ -39,7 +39,7 @@
  */
 
 import { TUNING } from "./tuning.js";
-import { midiRequiresKnee } from "../audioEngine.js";
+import { midiRequiresKnee, MIDI_TO_SOUND_ID } from "../audioEngine.js";
 
 /**
  * @param {Object}   deps
@@ -50,6 +50,7 @@ import { midiRequiresKnee } from "../audioEngine.js";
  * @param {Object}   deps.songUI         歌曲模式的 UI 更新介面
  * @param {Function} deps.getTransport   取得當前 active transport
  * @param {Function} [deps.getLimbMode] 取得部位配對模式："off"｜"standard"｜"allKnee"（預設 "off"）
+ * @param {Function} [deps.freePlayAccent] 自由模式的重音預覽 (n, zoneSound) → { left, right }
  */
 export function createHitRouter({
   getSession,
@@ -58,6 +59,7 @@ export function createHitRouter({
   songUI,
   getTransport,
   getLimbMode,
+  freePlayAccent,
 }) {
   return {
     /**
@@ -153,6 +155,33 @@ export function createHitRouter({
       if (res.midi !== null) audio.playMidi(res.midi, 1);
 
       songUI.onHitResult(res, sequencer);
+    },
+
+    /**
+     * 接下來 n 擊內是否有 crash（畫面重音抬手用，見 poseEngine/accentPose.js）。
+     * 分流與 route 相同：歌曲／分部模式看譜面游標，其餘交給自由模式。
+     *
+     * ⚠ 只 peek，不推進游標、不呼叫 syncBlock（對齊由 hudLoop 與打擊路徑負責）。
+     *   不知道下一擊是哪隻手（膝蓋），左右相同。依部位配對：
+     *   off → 手、膝都可能；standard → crash 限手部；allKnee → 限膝蓋。
+     */
+    getUpcomingAccent(n, zoneSound) {
+      const sequencer = getSession?.()?.isPlaying() ? getSession().getSequencer() : null;
+      if (!sequencer) {
+        return (
+          freePlayAccent?.(n, zoneSound) ?? {
+            left: false,
+            right: false,
+            leftKnee: false,
+            rightKnee: false,
+          }
+        );
+      }
+      const on = sequencer.peek(n).some((o) => MIDI_TO_SOUND_ID[o.midi] === "crash");
+      const limbMode = getLimbMode ? getLimbMode() : "off";
+      const hand = on && limbMode !== "allKnee";
+      const knee = on && limbMode !== "standard";
+      return { left: hand, right: hand, leftKnee: knee, rightKnee: knee };
     },
   };
 }

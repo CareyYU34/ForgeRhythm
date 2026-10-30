@@ -12,6 +12,7 @@ import {
 } from "./math.js";
 import { calcKneeRisingAdj, getZoneParams } from "./calibrationProfile.js";
 import { createHitEffectManager } from "./hitEffects.js";
+import { createAccentPose } from "./accentPose.js";
 import { perfLog } from "./perfLog.js";
 
 const POSE_CONNECTIONS = [
@@ -389,11 +390,41 @@ function drawPFOverlay({
   canvasCtx.restore();
 }
 
+/** perfLog 用：把 accentPose 的診斷狀態攤平成逐幀欄位（acc* = 手，accK* = 膝） */
+function accentDebugFields(dbg, r2) {
+  const fields = {
+    accOn: dbg.target ? +!!dbg.target.left + "" + +!!dbg.target.right : null, // "10" = 左手要、右手不要
+    accPick: dbg.pick ? +!!dbg.pick.left + "" + +!!dbg.pick.right : null,
+    accKOn: dbg.target ? +!!dbg.target.leftKnee + "" + +!!dbg.target.rightKnee : null,
+    accGate: r2(dbg.gate),
+  };
+  for (const [s, side] of [
+    ["L", "left"],
+    ["R", "right"],
+  ]) {
+    const h = dbg.hand[side];
+    const k = dbg.knee[side];
+    fields[`accBlend${s}`] = h ? r2(h.blend) : null;
+    fields[`accVis${s}`] = h ? h.vis : null;
+    fields[`accRise${s}`] = h ? r2(h.rise) : null;
+    fields[`accLift${s}`] = h ? r2(h.lift) : null;
+    fields[`accKBlend${s}`] = k ? r2(k.blend) : null;
+    fields[`accKRise${s}`] = k ? r2(k.rise) : null;
+    fields[`accKLift${s}`] = k ? r2(k.lift) : null;
+  }
+  return fields;
+}
+
+/**
+ * @param {Function} [adjustPoints]  畫之前改像素座標副本（重音抬手，見 accentPose.js）。
+ *   ⚠ 只影響畫面，landmarks 本身不動。
+ */
 function drawPoseLandmarks(
   landmarks,
   canvasCtx,
   getVideoDrawRect,
   visibilityThreshold,
+  adjustPoints,
 ) {
   const rect = getVideoDrawRect();
   const points = landmarks.map((landmark) => ({
@@ -401,6 +432,7 @@ function drawPoseLandmarks(
     y: rect.y + landmark.y * rect.height,
     visibility: landmark.visibility ?? 1,
   }));
+  adjustPoints?.(points);
 
   canvasCtx.save();
   canvasCtx.lineWidth = 3;
@@ -445,8 +477,11 @@ export function createPredictWebcam({
   zoneSound,
   onFrame,
   hitEffectManager,
+  getAccentTarget,
 }) {
   const _fx = hitEffectManager ?? createHitEffectManager();
+  // 重音抬手：getAccentTarget() → { left, right }（各手是否放大）；沒傳就不放大
+  const _accent = createAccentPose();
 
   // ── 診斷：相機影格的拍攝時間（只在本地端掛，線上零開銷）──
   // requestVideoFrameCallback 在同一幀的 rAF 之前觸發，所以 pose loop 讀到的
@@ -507,6 +542,15 @@ export function createPredictWebcam({
             canvasCtx,
             getVideoDrawRect,
             state.visibilityThreshold,
+            getAccentTarget &&
+              ((points) =>
+                _accent.apply(
+                  points,
+                  getAccentTarget(),
+                  webTimeMs,
+                  state.visibilityThreshold,
+                  { left: state.leftState, right: state.rightState },
+                )),
           );
         }
 
@@ -776,6 +820,37 @@ export function createPredictWebcam({
               kneeDfrL: r2(leftKneeMetrics?.downFrameRatio),
               kneeDfrR: r2(rightKneeMetrics?.downFrameRatio),
 
+              // ── 原始節點座標（normalized，x 往右、y 往下為正；未平滑）──
+              // 用來看髖、膝、踝之間的位置關係：膝蓋晃動是整個身體一起動還是只有膝蓋節點在動、
+              // 腿打直 / 彎曲時各節點怎麼變。踝在 history 判斷中沒有用到，只為了看腿的形狀。
+              hipXL: r2(leftHip?.x),
+              hipYL: r2(leftHip?.y),
+              hipXR: r2(rightHip?.x),
+              hipYR: r2(rightHip?.y),
+              kneeXL: r2(leftKnee?.x),
+              kneeYL: r2(leftKnee?.y),
+              kneeXR: r2(rightKnee?.x),
+              kneeYR: r2(rightKnee?.y),
+              ankleXL: r2(poseLandmarks[27]?.x),
+              ankleYL: r2(poseLandmarks[27]?.y),
+              ankleXR: r2(poseLandmarks[28]?.x),
+              ankleYR: r2(poseLandmarks[28]?.y),
+              // 肘（13/14）、腕（15/16）：看真實的重擊揮臂軌跡（重音抬手 accentPose 的參考）
+              elbowXL: r2(poseLandmarks[13]?.x),
+              elbowYL: r2(poseLandmarks[13]?.y),
+              elbowXR: r2(poseLandmarks[14]?.x),
+              elbowYR: r2(poseLandmarks[14]?.y),
+              wristXL: r2(poseLandmarks[15]?.x),
+              wristYL: r2(poseLandmarks[15]?.y),
+              wristXR: r2(poseLandmarks[16]?.x),
+              wristYR: r2(poseLandmarks[16]?.y),
+              // 重音抬手／提膝（accentPose）：上一層要不要作用 → 挑手 → 進度、抬起量、lift。
+              // lift 1 = 畫成完整預備姿勢；null = 沒算到（進度 ≈ 0 或節點看不到，看 accVis）
+              ...accentDebugFields(_accent.debug, r2),
+              // 膝蓋節點可見度：抖動是否發生在模型「不確定」的時候
+              kneeVisL: r2(leftKnee?.visibility),
+              kneeVisR: r2(rightKnee?.visibility),
+
               // ── 膝：動態門檻（adaptiveMonitor 會漂移）+ 武裝狀態 ──
               kDropHitL: r2(leftKneeThr?.windowDropHit),
               kDropHitR: r2(rightKneeThr?.windowDropHit),
@@ -783,8 +858,10 @@ export function createPredictWebcam({
               kDropRelR: r2(rightKneeThr?.windowDropRelease),
               kDropStrL: r2(leftKneeThr?.windowDropStrongHit),
               kDropStrR: r2(rightKneeThr?.windowDropStrongHit),
-              kArmL: !!state.leftKneeState?.canHit,
-              kArmR: !!state.rightKneeState?.canHit,
+              // 膝蓋觸發關閉時判斷不跑，canHit 是凍結的舊值 → 記 null
+              kOn: !!state.kneeTriggerEnabled,
+              kArmL: state.kneeTriggerEnabled ? !!state.leftKneeState?.canHit : null,
+              kArmR: state.kneeTriggerEnabled ? !!state.rightKneeState?.canHit : null,
             });
           }
         }
@@ -823,6 +900,7 @@ export function createPredictWebcam({
           ["right", state.rightState, state.rightThighCordon, pickedRightHand],
         ]) {
           if (!handState.didHit) continue;
+          _accent.noteHit(side, poseLandmarks, getVideoDrawRect());
           const handSpeed = side === "left" ? leftHandSpeed : rightHandSpeed;
           dispatchHit(
             side,
