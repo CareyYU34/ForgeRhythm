@@ -19,6 +19,8 @@
  *     旗標超過 CRASH_MARK_TTL_MS 沒被取用就作廢（例如該擊沒畫特效），不會殘留到之後的打擊。
  */
 
+import { PALETTE, secondaryOf } from "./palette.js";
+
 const HAND_DURATION_MS = 1100;
 const KICK_DURATION_MS = 950;
 
@@ -32,26 +34,15 @@ const CRASH_GRAVITY = 900;
 /** markCrash 旗標的有效期：同一次派發內必定用掉，留一點餘裕即可 */
 const CRASH_MARK_TTL_MS = 50;
 
-// ── 色彩主題（左手 vs 右手 vs 膝蓋）────────────────────────────────────────
+// ── 色彩主題（左手 vs 右手 vs 膝蓋 vs crash）────────────────────────────────
+// 顏色定義在 palette.js，與骨架光管共用；這裡只組成特效需要的 primary / secondary。
 
-const SIDE_COLORS = {
-  left: {
-    primary: [0, 220, 255],
-    secondary: [80, 255, 220],
-  },
-  right: {
-    primary: [255, 60, 160],
-    secondary: [255, 160, 60],
-  },
-  knee: {
-    primary: [255, 230, 0],
-    secondary: [255, 130, 0],
-  },
-  crash: {
-    primary: [255, 205, 70],
-    secondary: [255, 250, 225],
-  },
-};
+const SIDE_COLORS = Object.fromEntries(
+  ["left", "right", "knee", "crash"].map((key) => [
+    key,
+    { primary: PALETTE[key], secondary: secondaryOf(key) },
+  ]),
+);
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────
 

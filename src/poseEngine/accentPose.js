@@ -130,6 +130,17 @@ const KNEE_RISE_DEAD = 0.04;
 const KNEE_RISE_FULL = 0.1;
 /** 膝蓋基準每秒往下修多少（× 軀幹長） */
 const KNEE_BASE_DECAY = 0.1;
+/**
+ * 軀幹長低於肩寬的這個倍數就不量膝蓋（站姿軀幹 ≈ 肩寬 1.2~1.5 倍）。
+ * ⚠ 彎腰靠近鏡頭（例如去按按鈕）時肩、髖在畫面上幾乎同高，軀幹長 → 接近 0，
+ *   low = 膝髖距 / 軀幹長 會爆到上百；基準只往上取 max、往下每秒才修 KNEE_BASE_DECAY，
+ *   一幀爆掉就要好幾十分鐘才回來 —— 這段期間 rise 恆為上百：
+ *   重音提膝把膝蓋拉出畫面上方，膝蓋閘門也把手的高舉壓成 0。
+ *   （poseLog 2026-10-31：rise ≈ 198 / 231，手打 crash 時雙膝飛上去）
+ */
+const KNEE_MIN_TORSO_RATIO = 0.5;
+/** 膝在髖下方超過這個（× 軀幹長）視為量測錯誤，不進基準。大腿再長也到不了 */
+const KNEE_LOW_MAX = 1.5;
 /** 膝蓋閘門重新打開的時間常數（ms）；關閉是立即的 */
 const KNEE_GATE_RELEASE_MS = 250;
 /** 重音提膝：膝蓋抬到這個（× 軀幹長）就拉到完整高抬位置（快速踏步每下只抬 0.10~0.15） */
@@ -215,7 +226,8 @@ export function createAccentPose() {
     const [ls, rs, lh, rh] = [11, 12, 23, 24].map((i) => points[i]);
     if (![ls, rs, lh, rh].every(ok)) return kneeGate;
     const torso = (lh.y + rh.y - ls.y - rs.y) / 2;
-    if (torso <= 0) return kneeGate;
+    // 軀幹被壓扁（彎腰、側身）時 low 不可信，整幀不量（見 KNEE_MIN_TORSO_RATIO）
+    if (torso < KNEE_MIN_TORSO_RATIO * dist(ls, rs)) return kneeGate;
     torsoPx = torso;
 
     let rise = 0;
@@ -224,6 +236,7 @@ export function createAccentPose() {
       const K = points[LEG_INDEX[side].knee];
       if (!ok(K)) continue;
       const low = (K.y - H.y) / torso;
+      if (low > KNEE_LOW_MAX) continue;
       const base = kneeBase[side];
       kneeBase[side] = base === null ? low : Math.max(low, base - (KNEE_BASE_DECAY * dt) / 1000);
       kneeRise[side] = kneeBase[side] - low;
@@ -400,5 +413,22 @@ export function createAccentPose() {
     }
   }
 
-  return { noteHit, apply, debug };
+  /** 鏡頭重開：清掉跨幀累積的基準與進度（等同重新整理網頁） */
+  function reset() {
+    for (const side of ["left", "right"]) {
+      blend[side] = 0;
+      ref[side] = null;
+      prevArmed[side] = false;
+      armedSince[side] = null;
+      kneeBase[side] = null;
+      kneeRise[side] = null;
+      kneeBlend[side] = 0;
+    }
+    lastMs = null;
+    chosen = null;
+    kneeGate = 1;
+    torsoPx = null;
+  }
+
+  return { noteHit, apply, reset, debug };
 }

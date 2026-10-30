@@ -15,43 +15,33 @@ import { createHitEffectManager } from "./hitEffects.js";
 import { createAccentPose } from "./accentPose.js";
 import { perfLog } from "./perfLog.js";
 
-const POSE_CONNECTIONS = [
-  [0, 1],
-  [1, 2],
-  [2, 3],
-  [3, 7],
-  [0, 4],
-  [4, 5],
-  [5, 6],
-  [6, 8],
-  [9, 10],
+import { PALETTE, lighten } from "./palette.js";
+
+// ── 霓虹光管骨架 ──
+// 只畫軀幹框、頭圈、四肢與手心；臉部細點、手指、腳掌不畫（太碎，看起來像散落的釘子）。
+const NEON_TORSO = [
   [11, 12],
-  [11, 13],
-  [13, 15],
-  [15, 17],
-  [15, 19],
-  [15, 21],
-  [17, 19],
-  [12, 14],
-  [14, 16],
-  [16, 18],
-  [16, 20],
-  [16, 22],
-  [18, 20],
-  [11, 23],
   [12, 24],
-  [23, 24],
-  [23, 25],
-  [25, 27],
-  [27, 29],
-  [29, 31],
-  [24, 26],
-  [26, 28],
-  [28, 30],
-  [30, 32],
-  [27, 31],
-  [28, 32],
+  [24, 23],
+  [23, 11],
 ];
+const NEON_LIMBS = [
+  { side: "left", part: "arm", segs: [[11, 13], [13, 15]] },
+  { side: "right", part: "arm", segs: [[12, 14], [14, 16]] },
+  { side: "left", part: "leg", segs: [[23, 25], [25, 27]] },
+  { side: "right", part: "leg", segs: [[24, 26], [26, 28]] },
+];
+// 由外而內三層：[線寬 × 肩寬, 透明度]。最後一層是白熱芯。
+// 光暈用半透明寬線疊出來，不用 shadowBlur（每條線都要模糊一次，pose loop 吃不起）。
+const NEON_LAYERS = [
+  [0.42, 0.07],
+  [0.22, 0.18],
+  [0.075, 0.95],
+];
+// 打擊後該段光管變亮變粗，NEON_FLARE_MS 內退回
+const NEON_FLARE_MS = 300;
+// 肩膀看不到時的肩寬退回值（× 畫面寬）
+const NEON_SCALE_FALLBACK = 0.2;
 
 // ── 將 knee / hand 相關常數從幀循環內移至模組頂層，避免每幀重建物件 ──
 
@@ -69,6 +59,16 @@ function emaPoint(prev, curr, alpha) {
 
 // 膝蓋短時間窗長度（秒）。≈ 舊版 30fps 下 5 幀（4 段 × 33ms），改以時間定義後不隨幀率變。
 const KNEE_WINDOW_SEC = 0.14;
+
+// ── 手擊遮罩膝蓋 ──
+// 同側手落到大腿（strikeLandMs）或觸發（lastHitMs）後這段時間內，該側膝蓋不准觸發。
+// 實測（poseLog 2026-10-30）：沒抬膝卻觸發的 17 次膝蓋打擊，有 15 次落在同側手打擊後
+// 0–170ms，另 2 次是手落了地但沒觸發；另有幾次膝蓋在手還在半空下擊時就先掉了
+// （strikeDescending 也算遮罩）。膝蓋節點跟著手上下動（手抬膝也抬、手拍膝就掉），
+// 雙膝收攏時手落點貼近膝蓋，最嚴重。只擋同側：異側手膝組合不受影響。
+// 遮罩期間膝蓋強制解除武裝，遮罩結束後要先回穩（windowDy ≤ release）才能再觸發，
+// 避免遮罩一結束就把視窗裡殘留的下掉量打出去。
+const KNEE_HAND_MASK_MS = 250;
 
 // ── 身體尺度（肩寬）：膝蓋位移 / 速度的正規化分母 ──
 // 慢速 EMA：肩寬只隨人離鏡頭遠近緩慢變化，不需要即時跟。
@@ -173,21 +173,26 @@ export function createInitialPoseState() {
 
     // ── 校準 profile（null = 未校準，不發聲）──
     calibrationProfile: null,
+    _calibrationLogged: false, // main.js：本次校準結果是否已轉成 profile
 
     // ── Hip / Knee EMA 平滑儲存（null = 尚未初始化，下一幀直接採用原始值）──
     emaLeftHip: null,
     emaRightHip: null,
     emaLeftKnee: null,
     emaRightKnee: null,
+
+    // ── 膝蓋靜止基準 y（adaptiveMonitor 動態追蹤；null = 尚未量到，退回 profile.kneeBaseline）──
+    kneeRestY: null, // { left, right }
   };
 }
 
 // ── 使用者偏好欄位：不應該在鏡頭重開時被重置 ──
+// 只留「顯示 / 開關」類偏好。visibilityThreshold、calibrationProfile 不留：
+// 兩者都會被 adaptiveMonitor 一路漂移（可見度閾值、PF_HIT、膝蓋門檻），
+// 重開鏡頭要和重新整理網頁一樣從頭來（冷啟動重新套預設 profile）。
 const USER_PREFERENCE_KEYS = [
   "drawPoseDebugEnabled",
   "showCameraFeed",
-  "visibilityThreshold",
-  "calibrationProfile",
   "showPFOverlay",
   "kneeTriggerEnabled",
 ];
@@ -415,9 +420,16 @@ function accentDebugFields(dbg, r2) {
   return fields;
 }
 
+const neonRgba = ([r, g, b], a) => `rgba(${r},${g},${b},${Math.min(1, a).toFixed(3)})`;
+const mixColor = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+
 /**
+ * 霓虹光管骨架。顏色全部取自 palette.js（與 hitEffects 同一份）。
+ *
  * @param {Function} [adjustPoints]  畫之前改像素座標副本（重音抬手，見 accentPose.js）。
  *   ⚠ 只影響畫面，landmarks 本身不動。
+ * @param {Object} [flareMs]  { "left-arm": 打擊時間, "right-leg": ... }，打到的那段光管閃一下
+ * @param {number} [nowMs]
  */
 function drawPoseLandmarks(
   landmarks,
@@ -425,6 +437,8 @@ function drawPoseLandmarks(
   getVideoDrawRect,
   visibilityThreshold,
   adjustPoints,
+  flareMs = {},
+  nowMs = 0,
 ) {
   const rect = getVideoDrawRect();
   const points = landmarks.map((landmark) => ({
@@ -434,32 +448,87 @@ function drawPoseLandmarks(
   }));
   adjustPoints?.(points);
 
-  canvasCtx.save();
-  canvasCtx.lineWidth = 3;
-  canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+  const ok = (...ids) =>
+    ids.every((i) => points[i] && points[i].visibility >= visibilityThreshold);
 
-  for (const [startIndex, endIndex] of POSE_CONNECTIONS) {
-    const start = points[startIndex];
-    const end = points[endIndex];
-    if (!start || !end) continue;
-    if (
-      start.visibility < visibilityThreshold ||
-      end.visibility < visibilityThreshold
-    ) {
-      continue;
-    }
+  // 線寬以肩寬為尺度：人離鏡頭遠近不同，光管粗細跟著身體比例走
+  const S = ok(11, 12)
+    ? Math.hypot(points[11].x - points[12].x, points[11].y - points[12].y)
+    : rect.width * NEON_SCALE_FALLBACK;
 
-    canvasCtx.beginPath();
-    canvasCtx.moveTo(start.x, start.y);
-    canvasCtx.lineTo(end.x, end.y);
-    canvasCtx.stroke();
+  const flare = {};
+  for (const key in flareMs) {
+    flare[key] = Math.max(0, 1 - (nowMs - flareMs[key]) / NEON_FLARE_MS) ** 2;
   }
 
-  canvasCtx.fillStyle = "rgba(255, 64, 64, 0.95)";
-  for (const point of points) {
-    if (point.visibility < visibilityThreshold) continue;
+  const stroke = (a, b) => {
     canvasCtx.beginPath();
-    canvasCtx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+    canvasCtx.moveTo(points[a].x, points[a].y);
+    canvasCtx.lineTo(points[b].x, points[b].y);
+    canvasCtx.stroke();
+  };
+
+  // 頭圈：兩耳中點為圓心
+  const head = ok(7, 8)
+    ? {
+        x: (points[7].x + points[8].x) / 2,
+        y: (points[7].y + points[8].y) / 2,
+        r: Math.hypot(points[7].x - points[8].x, points[7].y - points[8].y) * 0.62,
+      }
+    : null;
+
+  canvasCtx.save();
+  canvasCtx.lineCap = "round";
+  canvasCtx.lineJoin = "round";
+  // 疊加混色：光暈重疊處變亮，像真的光
+  canvasCtx.globalCompositeOperation = "lighter";
+
+  NEON_LAYERS.forEach(([width, alpha], li) => {
+    const core = li === NEON_LAYERS.length - 1;
+
+    canvasCtx.lineWidth = S * width;
+    canvasCtx.strokeStyle = neonRgba(
+      core ? lighten(PALETTE.body, 0.6) : PALETTE.body,
+      alpha,
+    );
+    for (const [a, b] of NEON_TORSO) if (ok(a, b)) stroke(a, b);
+    if (head) {
+      canvasCtx.beginPath();
+      canvasCtx.arc(head.x, head.y, head.r, 0, Math.PI * 2);
+      canvasCtx.stroke();
+    }
+
+    for (const limb of NEON_LIMBS) {
+      const fl = flare[`${limb.side}-${limb.part}`] ?? 0;
+      // 膝蓋觸發時腿轉成膝蓋色，和 kick 特效對上
+      const color =
+        limb.part === "leg" && fl > 0
+          ? mixColor(PALETTE[limb.side], PALETTE.knee, fl)
+          : PALETTE[limb.side];
+      canvasCtx.lineWidth = S * width * (1 + 0.45 * fl);
+      canvasCtx.strokeStyle = core
+        ? neonRgba(lighten(color, 0.55 + 0.4 * fl), alpha)
+        : neonRgba(color, alpha * (1 + 2.2 * fl));
+      for (const [a, b] of limb.segs) if (ok(a, b)) stroke(a, b);
+    }
+  });
+
+  // 手心：手部打擊點（pinky + index 中點，與 handBasePointFromPoseLandmarks 一致）
+  for (const [side, pinky, index] of [
+    ["left", 17, 19],
+    ["right", 18, 20],
+  ]) {
+    if (!ok(pinky, index)) continue;
+    const hx = (points[pinky].x + points[index].x) / 2;
+    const hy = (points[pinky].y + points[index].y) / 2;
+    const fl = flare[`${side}-arm`] ?? 0;
+    canvasCtx.fillStyle = neonRgba(PALETTE[side], 0.25 + 0.3 * fl);
+    canvasCtx.beginPath();
+    canvasCtx.arc(hx, hy, S * (0.17 + 0.08 * fl), 0, Math.PI * 2);
+    canvasCtx.fill();
+    canvasCtx.fillStyle = "rgba(255,255,255,0.95)";
+    canvasCtx.beginPath();
+    canvasCtx.arc(hx, hy, S * 0.06, 0, Math.PI * 2);
     canvasCtx.fill();
   }
 
@@ -482,6 +551,9 @@ export function createPredictWebcam({
   const _fx = hitEffectManager ?? createHitEffectManager();
   // 重音抬手：getAccentTarget() → { left, right }（各手是否放大）；沒傳就不放大
   const _accent = createAccentPose();
+  // 霓虹骨架閃光：{ "left-arm": 打擊時間 }。純畫面用，不放進 state。
+  // 打擊派發在畫骨架之後，所以閃光從下一幀開始（差一幀，看不出來）。
+  const _flareMs = {};
 
   // ── 診斷：相機影格的拍攝時間（只在本地端掛，線上零開銷）──
   // requestVideoFrameCallback 在同一幀的 rAF 之前觸發，所以 pose loop 讀到的
@@ -551,6 +623,8 @@ export function createPredictWebcam({
                   state.visibilityThreshold,
                   { left: state.leftState, right: state.rightState },
                 )),
+            _flareMs,
+            webTimeMs,
           );
         }
 
@@ -678,18 +752,23 @@ export function createPredictWebcam({
           const profile = state.calibrationProfile;
 
           // ── 膝蓋上升補償量（每幀計算，用平滑後的 knee y）──
-          // 提膝時 emaKnee.y < kneeBaseline.y，calcKneeRisingAdj 回傳正值。
+          // 提膝時 emaKnee.y < 基準 y，calcKneeRisingAdj 回傳正值。
           // 這個補償量疊加到 PF_HIT（同時也是重新武裝線），
           // 讓大腿線旋轉造成的 PF 幾何漂移無法穿越門檻，防止誤觸發。
+          // 基準優先用 adaptiveMonitor 追蹤的實際靜止膝位（kneeRestY）：預設 profile 的
+          // kneeBaseline 是別人的鏡頭構圖，實測差 0.12–0.15 → 補償恆為 0.2–0.28，
+          // 手在半空就觸發、抬手也回不到武裝線（poseLog 2026-10-30）。
           const leftKneeAdj = calcKneeRisingAdj(
             profile,
             "left",
             state.emaLeftKnee?.y ?? leftKnee.y,
+            state.kneeRestY?.left,
           );
           const rightKneeAdj = calcKneeRisingAdj(
             profile,
             "right",
             state.emaRightKnee?.y ?? rightKnee.y,
+            state.kneeRestY?.right,
           );
 
           // 註：重新武裝（PF > PF_HIT）與下擊段峰值速度追蹤都內建在
@@ -746,20 +825,39 @@ export function createPredictWebcam({
             state.leftKneeState = { ...state.leftKneeState, didHit: false };
             state.rightKneeState = { ...state.rightKneeState, didHit: false };
           } else {
-            if (leftKneeMetrics) {
-              state.leftKneeState = monitoringKneeKickConditions(
-                state.leftKneeState,
-                leftKneeMetrics,
+            // 手擊遮罩（見 KNEE_HAND_MASK_MS）：遮罩中先把武裝拿掉再判斷，
+            // 判斷照跑（特徵照記、回穩照樣重新武裝），只是這幀不可能觸發。
+            const judgeKnee = (kneeState, handState, metrics, thr) => {
+              const lastHandMs = Math.max(
+                handState?.lastHitMs ?? -Infinity,
+                handState?.strikeLandMs ?? -Infinity,
+              );
+              const handMasked =
+                !!handState?.strikeDescending ||
+                webTimeMs - lastHandMs < KNEE_HAND_MASK_MS;
+              const next = monitoringKneeKickConditions(
+                handMasked ? { ...kneeState, canHit: false } : kneeState,
+                metrics,
                 webTimeMs,
+                thr,
+              );
+              return { ...next, handMasked };
+            };
+
+            if (leftKneeMetrics) {
+              state.leftKneeState = judgeKnee(
+                state.leftKneeState,
+                state.leftState,
+                leftKneeMetrics,
                 leftKneeThr,
               );
             }
 
             if (rightKneeMetrics) {
-              state.rightKneeState = monitoringKneeKickConditions(
+              state.rightKneeState = judgeKnee(
                 state.rightKneeState,
+                state.rightState,
                 rightKneeMetrics,
-                webTimeMs,
                 rightKneeThr,
               );
             }
@@ -808,6 +906,8 @@ export function createPredictWebcam({
               spHitR: rightParams ? rightParams.SPEED_HIT : null,
               kAdjL: r2(leftKneeAdj),
               kAdjR: r2(rightKneeAdj),
+              kRestYL: r2(state.kneeRestY?.left), // 提膝補償的膝蓋基準 y
+              kRestYR: r2(state.kneeRestY?.right),
 
               // ── 膝：實測（湊齊 conditions.js 比對的所有量；位移/速度單位 = 肩寬）──
               kScale: r2(bodyScale),
@@ -862,6 +962,9 @@ export function createPredictWebcam({
               kOn: !!state.kneeTriggerEnabled,
               kArmL: state.kneeTriggerEnabled ? !!state.leftKneeState?.canHit : null,
               kArmR: state.kneeTriggerEnabled ? !!state.rightKneeState?.canHit : null,
+              // 本幀是否被同側手擊遮罩（遮罩中不會觸發）
+              kMaskL: state.kneeTriggerEnabled ? !!state.leftKneeState?.handMasked : null,
+              kMaskR: state.kneeTriggerEnabled ? !!state.rightKneeState?.handMasked : null,
             });
           }
         }
@@ -872,6 +975,8 @@ export function createPredictWebcam({
         //   perfLog.noteSound，只有「派發期」（hit → endDispatch）才會掛到這一擊。
         const animTimings = []; // 本幀有特效的打擊紀錄，畫完後補上動畫時機
         const dispatchHit = (side, zoneId, extra, timingExtra, pushFx) => {
+          // 骨架閃光跟著特效走：有畫特效的那一擊，對應的手臂／腿才閃
+          const flareKey = `${side}-${zoneId === HAND_ZONE ? "arm" : "leg"}`;
           const rec = perfLog.isActive()
             ? perfLog.hit({
                 side,
@@ -889,8 +994,9 @@ export function createPredictWebcam({
             : null;
           playZone(side, zoneId, zoneSound);
           perfLog.endDispatch();
-          if (zoneSound[`${side}_${zoneId}`] !== "none" && pushFx() && rec) {
-            animTimings.push(rec.timing);
+          if (zoneSound[`${side}_${zoneId}`] !== "none" && pushFx()) {
+            _flareMs[flareKey] = webTimeMs;
+            if (rec) animTimings.push(rec.timing);
           }
         };
 
@@ -953,6 +1059,12 @@ export function createPredictWebcam({
 
     state.rafId = requestAnimationFrame(predictWebcam);
   }
+
+  // 鏡頭重開時清掉本迴圈閉包內跨幀累積的畫面狀態（state 由 resetPoseState 負責）
+  predictWebcam.reset = () => {
+    _accent.reset();
+    for (const key in _flareMs) delete _flareMs[key];
+  };
 
   return predictWebcam;
 }

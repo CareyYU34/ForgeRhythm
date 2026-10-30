@@ -359,6 +359,10 @@ const stopCam = () => {
   songSession.exit("camera-off");
   partSession.exit("camera-off");
   monitor.stop();
+  // 重開鏡頭 = 重新整理網頁：校準流程（含已完成的結果）、節點狀態、
+  // 可見度閾值、自適應漂移過的門檻全部歸零，開鏡頭後重新冷啟動。
+  calibration.abort();
+  predictWebcam.reset();
   stopWebcam({
     video,
     canvasCtx,

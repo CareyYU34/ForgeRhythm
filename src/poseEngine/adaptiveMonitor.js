@@ -11,6 +11,9 @@
  *      poseLoop 讓 windowDropRelease / windowDropStrongHit 隨它等比縮放）。
  *      ⚠ 手部打擊後 KNEE_HAND_GATE_MS 內不累計近失：手打會帶動兩膝節點同步上下晃
  *        （實測約 0.1 肩寬，剛好落在近失區間），若照算會把門檻一路降到下限而誤觸。
+ *        沒觸發的落手（strikeLandMs）同樣算數。
+ *   3b. 膝蓋靜止基準：追蹤實際的膝蓋靜止 y 寫進 state.kneeRestY，給 poseLoop 的提膝補償當基準
+ *      （取代 profile.kneeBaseline，見 updateKneeRest）。
  *   4. Visibility 自適應：根據節點歷史可見度，動態調整全域 visibilityThreshold
  *   5. 手部 near-miss 升級：偵測「有下擊但差一點才觸發」，把 PF_HIT 往上推（只升不降），
  *      解開「力道到不了 PF_HIT → 沒有成功樣本 → PF_HIT 卡死打不出來」的死結。
@@ -95,8 +98,13 @@ const MONITOR_TUNING = {
   HAND_NM_MAX_GAP: 0.2, // 差點就中：谷底 − PF_HIT ≤ 此值才算（絕對差，與 PF_HIT 無關）
   HAND_NM_MIN_DEPTH: 0.15, // 該次下擊需有此深度（peak−谷底）才算真攻擊，濾除懸停抖動
   HAND_NM_REVERSAL_DELTA: 0.03, // 谷底回升超過此量才確認一次下擊結束（濾單幀跳點）
-  HAND_NM_COUNT: 2, // 累積幾次 near-miss 才上調
-  HAND_NM_COOLDOWN_MS: 3000, // 兩次上調間的冷卻
+  // 2 → 1、3000 → 800：落點 PF 會隨姿勢大幅移動（雙膝內縮時手落點 PF ≈ 0，張開回來後
+  // ≈ 0.2–0.3，poseLog 2026-10-30）。內縮時低谷路徑很快把 PF_HIT 降到 0.15，張開回來後
+  // 舊設定要 2 次近失 + 3 秒冷卻一階一階爬，整段左右手漏打 76 次（大多在張開回來後的
+  // 15 秒）；離線回放改成 1 次 / 800ms 降到 33 次。代價：PF_HIT 會停在落點之上約 0.1（低谷 × K1 拉不回來），
+  // 觸發早約一幀。
+  HAND_NM_COUNT: 1, // 累積幾次 near-miss 才上調
+  HAND_NM_COOLDOWN_MS: 800, // 兩次上調間的冷卻
   HAND_NM_MARGIN: 1.05, // 上調目標 = 最接近谷底 × 此值（略高於谷底，確保能觸發）
 
   // Knee 自適應
@@ -110,6 +118,13 @@ const MONITOR_TUNING = {
   // 偶爾到 0.13，落在近失區間（0.7–1.0 × 0.14）；不擋的話 68 秒內門檻從 0.14 降到 0.07，
   // 右膝誤觸 16 次。只擋近失計數，不擋踢腿判斷本身。
   KNEE_HAND_GATE_MS: 400,
+
+  // 膝蓋靜止基準（state.kneeRestY，提膝補償的參考點）
+  // 不對稱追蹤：膝蓋比基準低（y 大）→ 快跟（就是靜止位置）；比基準高（y 小 = 提膝）→ 極慢跟，
+  // 一般踩踏的抬起不會把基準拉上去，但換姿勢（例如改成站著）數秒後會跟上。
+  // 時間常數用秒，不隨幀率變。
+  KNEE_REST_TAU_DOWN_SEC: 0.5,
+  KNEE_REST_TAU_UP_SEC: 8,
 
   // Visibility 自適應
   VIS_HISTORY_FRAMES: 150, // visibility 歷史 buffer 大小（約 5s @ 30fps）
@@ -723,6 +738,39 @@ export function createAdaptiveMonitor({ state }) {
 
   // ── Knee 近失追蹤（每幀呼叫）──
 
+  // ── 膝蓋靜止基準追蹤（每幀呼叫）──
+  // 讀 poseLoop 平滑後的膝蓋（emaLeftKnee / emaRightKnee），寫 state.kneeRestY。
+  // poseLoop 的提膝補償以它為基準；null 時退回 profile.kneeBaseline。
+
+  let kneeRestLastMs = null;
+
+  function updateKneeRest(nowMs) {
+    const dtSec =
+      kneeRestLastMs == null ? 0 : Math.max(0, (nowMs - kneeRestLastMs) / 1000);
+    kneeRestLastMs = nowMs;
+
+    const prev = state.kneeRestY ?? { left: null, right: null };
+    const next = { ...prev };
+    for (const [side, ema] of [
+      ["left", state.emaLeftKnee],
+      ["right", state.emaRightKnee],
+    ]) {
+      const y = ema?.y;
+      if (y == null) continue;
+      const rest = prev[side];
+      if (rest == null) {
+        next[side] = y;
+        continue;
+      }
+      const tau =
+        y > rest
+          ? MONITOR_TUNING.KNEE_REST_TAU_DOWN_SEC
+          : MONITOR_TUNING.KNEE_REST_TAU_UP_SEC;
+      next[side] = rest + (y - rest) * (1 - Math.exp(-dtSec / tau));
+    }
+    state.kneeRestY = next;
+  }
+
   function updateKneeNearMiss(side, nowMs) {
     if (!state.calibrationProfile) return;
     // 膝蓋觸發關閉時不調門檻：關閉期間的膝蓋動作不是「想踢沒踢中」
@@ -743,10 +791,14 @@ export function createAdaptiveMonitor({ state }) {
       return;
 
     // 手部剛打過：這段時間的膝蓋位移多半是手打帶動的晃動，不是「想踢沒踢中」。
-    // lastHitMs 與 nowMs 同為 performance.now()。
+    // 除了觸發（lastHitMs），沒觸發的落手（strikeLandMs）也算：poseLog 2026-10-30
+    // 手落了地但沒觸發，膝蓋跟著晃，右膝門檻就被降了一級（0.1134 → 0.1021）。
+    // lastHitMs / strikeLandMs 與 nowMs 同為 performance.now()。
     const lastHandHitMs = Math.max(
       state.leftState?.lastHitMs ?? -Infinity,
       state.rightState?.lastHitMs ?? -Infinity,
+      state.leftState?.strikeLandMs ?? -Infinity,
+      state.rightState?.strikeLandMs ?? -Infinity,
     );
     if (nowMs - lastHandHitMs < MONITOR_TUNING.KNEE_HAND_GATE_MS) return;
 
@@ -990,6 +1042,9 @@ export function createAdaptiveMonitor({ state }) {
         const vis = lm?.visibility ?? 0;
         pushToBuffer(visBuffers[idx], vis, MONITOR_TUNING.VIS_HISTORY_FRAMES);
       }
+
+      // 膝蓋靜止基準：冷啟動前就開始追，套用 profile 那一刻已經有實測值
+      updateKneeRest(nowMs);
 
       // 冷啟動前不執行 PF / Knee 更新
       if (!state.calibrationProfile) return;

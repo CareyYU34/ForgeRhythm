@@ -248,12 +248,14 @@ export function getZoneParams(profile, side, direction) {
  * @param {CalibrationProfile} profile
  * @param {"right"|"left"} side
  * @param {number} currentKneeY - 當前幀膝蓋的 normalized y 座標
+ * @param {number} [restY] - 實測的膝蓋靜止 y（state.kneeRestY）；有就優先於 profile.kneeBaseline。
+ *   kneeBaseline 是校準（或預設 profile 那位使用者）當時的構圖，換位置、換鏡頭就對不上。
  * @returns {number} 應疊加到 PF_HIT 的補償量（>= 0）
  */
-export function calcKneeRisingAdj(profile, side, currentKneeY) {
+export function calcKneeRisingAdj(profile, side, currentKneeY, restY) {
   if (!profile) return 0;
 
-  const baseline_y = profile.kneeBaseline?.[`${side}_y`];
+  const baseline_y = restY ?? profile.kneeBaseline?.[`${side}_y`];
   if (baseline_y == null || currentKneeY == null) return 0;
 
   // 提膝 = y 值變小（畫面座標向上）→ 差值為正

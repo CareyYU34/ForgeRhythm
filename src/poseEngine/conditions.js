@@ -1,3 +1,6 @@
+// 落手判定：下擊段峰值手速 ≥ SPEED_HIT × 此值才記 strikeLandMs（見下方）
+const LAND_SPEED_RATIO = 0.5;
+
 export function monitoringTriggerConditions(
   State,
   ThighCordon,
@@ -41,7 +44,17 @@ export function monitoringTriggerConditions(
     State.belowSinceMs = null;
   } else if (State.belowSinceMs == null) {
     State.belowSinceMs = nowMs;
+    // strikeLandMs：手「打下來」落到大腿的時間，不論有沒有觸發（速度差一點、冷卻中都算）。
+    // 給膝蓋遮罩用：手拍大腿會把膝蓋節點一起拍下去，看起來像踩膝（poseLog 2026-10-30）。
+    // 要求下擊段有一定手速：手停在半空、提膝把大腿頂上來使 PF 變小時，手速 ≈ 0，不算落手。
+    if (State.strokeSpeedMax >= SPEED_HIT * LAND_SPEED_RATIO) {
+      State.strikeLandMs = nowMs;
+    }
   }
+  // strikeDescending：手正在半空快速下擊（還沒落到 PF_HIT）。膝蓋節點在手落地前 2–3 幀
+  // 就會先被帶下去（poseLog 2026-10-30），光看 strikeLandMs 會慢一步。
+  State.strikeDescending =
+    PF > PF_HIT && State.strokeSpeedMax >= SPEED_HIT * LAND_SPEED_RATIO;
 
   if (nowMs - State.lastHitMs < COOLDOWN_MS) {
     return { ...State, didHit: false };
