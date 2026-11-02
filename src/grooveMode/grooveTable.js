@@ -10,6 +10,17 @@
  *        同時發聲用 "+" 連接，例如 "kick+ride"。
  *        ⚠ 每一擊都一定會發聲（打一下走一格）。
  *
+ * 鬼音：音名加括號，例如 "(snare)"、"hihat+(snare)"、"~(snare)/8t"。
+ *        以較小的音量播放（freePlayRouter 的 GHOST_GAIN），其他規則與一般音相同。
+ *        ⚠ 括號只包音名，不包時值與 "~"；rest 不能加括號。
+ *
+ * 自動音：音名前加 "~"，例如 "~hihat"、"~hihat+snare/8t"。
+ *        不用打：跟著前一擊，依使用者當下的速度自動響（freePlayRouter 排程）。
+ *        用在使用者不容易打出來的節奏（例如三連音）：使用者只打拍點，
+ *        拍與拍之間由自動音補上。使用者提早打下一擊，還沒響的自動音會取消。
+ *        ⚠ groove／過門的第一個音不能是自動音；rest 與 land 不能加 "~"。
+ *        ⚠ 自動音不算擊數：rate 與 selector 用的密度都只算要打的那幾擊。
+ *
  * 休止：寫 "rest"，時值寫法同音名（"rest/16"、"rest/8."，沒寫 = unit）。
  *        rest 不是一擊、不用打：它的長度併進前一擊，只影響 BPM 換算與密度。
  *        所以 "kick/16 rest/8" 與 "kick/8." 完全等價，照譜面習慣寫即可。
@@ -24,13 +35,21 @@
  *        "snare/16"      十六分
  *        "kick/8."       附點八分（= 3 個十六分）
  *        "crash/4"       四分（含後面的休止）
+ *        三連音加 "t"（不能與附點同時用）：
+ *        "snare/8t"      8 分三連（一拍 3 下，各 1/3 拍）
+ *        "snare/16t"     16 分三連 = 6 連音（一拍 6 下，各 1/6 拍）
+ *        "kick/4t"       4 分三連（2/3 拍）—— shuffle 的長音：kick/4t hihat/8t
+ *        ⚠ 一串連續的三連音結束時要落在半拍上（沒湊滿就接直拍會警告）。
+ *        ⚠ 自由模式沒有節拍器，平均地打 8 分、16 分、三連聽起來都一樣；
+ *          「三連感」來自音色以 3 個一組排列（kick／snare／重音的位置），
+ *          時值只決定換算出來的 BPM。
  *        時值只用來換算速度（BPM），不影響「打一下走一格」。
  *        慣例：unit 設成該項最常出現的時值，只有例外才標。
  *
  * GROOVES 每一項：
- *   unit   最小單位是幾分音符（8 或 16），也是 steps 時值的預設值
+ *   unit   最小單位是幾分音符（8、16，或三連 "8t"），也是 steps 時值的預設值
  *   rate   倍率（分類標籤）：每拍平均擊數 ÷ 2，以「8 分全打」= 1。
- *          unit 為 16 時必填，例如切分 16 分 ≈ 1.25、16 分全打 = 2。
+ *          unit 不是 8 時必填，例如切分 16 分 ≈ 1.25、16 分全打 = 2、8 分三連全打 = 1.5。
  *          ⚠ 引擎選 groove 用的是由時值算出來的實際密度，不是這個標籤；
  *            載入時兩者差超過 20% 會在 console 警告（附上實際值）。
  *   steps  一輪的內容；一輪的總拍數必須是整數拍
@@ -74,11 +93,16 @@ export const SOUNDS = {
 };
 
 /** 開始打擊時、以及閒置歸零後的起始 groove */
-export const START_GROOVE = ["basic", "double"];
+// ⚠ 試打 tripletShuffle 用，試完改回 ["basic", "double"]
+export const START_GROOVE = ["tripletShuffle"];
 
 /*
  * 註解的拍點記法：1 e & a = 一拍裡的四個 16 分位置。
  *   K = kick、S = snare，例如「K: 1 1a 2a」= kick 落在 1、1 的 a、2 的 a。
+ * 三連音：1 t l = 一拍裡的三個 8 分三連位置（1 trip let），例如「K: 3l」= 3 的 let。
+ *
+ * ⚠ 三連的 groove 不要放進 START_GROOVE：tempoTracker 第一次取基點只會 ÷2 折，
+ *   三連與直拍差 3:2，折不回來。（shuffle 每拍 2 擊與 basic 同密度，不受影響。）
  */
 export const GROOVES = {
   // ─── 8 分（rate 1 附近）────────────────────────────────
@@ -89,7 +113,7 @@ export const GROOVES = {
     steps: "hihat+kick hihat hihat+snare hihat",
     loops: 4,
     fill: ["snare4", "kickSnare", "tomsDown8"],
-    next: ["basic", "double", "offbeat", "syncA"],
+    next: ["basic", "double", "offbeat", "syncA", "shuffle"],
   },
   // 動 次 打 次 動 動 打 次
   double: {
@@ -105,8 +129,8 @@ export const GROOVES = {
     unit: 8,
     steps: "ride+kick ride ride+snare ride",
     loops: 4,
-    fill: ["kickSnare", "syncTom"],
-    next: ["basic", "offbeat"],
+    fill: ["kickSnare", "syncTom", "tripletToms"],
+    next: ["basic", "offbeat", "shuffle"],
   },
   // 8 分切分：kick 落在反拍。K: 1 2& 3&｜S: 2 4
   offbeat: {
@@ -126,6 +150,53 @@ export const GROOVES = {
     loops: [2, 4],
     fill: ["slowToms", "tomsDown8"],
     next: ["basic", "offbeat"],
+  },
+
+  // ─── 三連音 ─────────────────────────────────────────
+
+  // shuffle：長短長短（4 分三連 + 8 分三連）。每拍 2 擊 → 與 basic 同密度，手速不變就能互換。
+  // K: 1 3 3l｜S: 2 4
+  shuffle: {
+    unit: "8t",
+    rate: 1,
+    steps:
+      "hihat+kick/4t hihat hihat+snare/4t hihat " +
+      "hihat+kick/4t hihat+kick hihat+snare/4t hihat",
+    loops: [2, 4],
+    fill: ["tripletToms", "kickSnare"],
+    next: ["shuffle", "basic", "triplet"],
+  },
+  // 12/8 感：8 分三連全打（ride）。每拍 3 擊（rate 1.5，與 syncB 同密度）。
+  // K: 1 3 3l｜S: 2 4
+  triplet: {
+    unit: "8t",
+    rate: 1.5,
+    steps:
+      "ride+kick ride ride ride+snare ride ride " +
+      "ride+kick ride ride+kick ride+snare ride ride",
+    loops: 2,
+    fill: ["tripletToms", "sextTom"],
+    next: ["triplet", "shuffle", "syncB", "full16"],
+  },
+  // 三連 shuffle 練習譜（第 7–10 小節的前三小節；第四小節是過門 tripletBar）。
+  // 使用者每拍只打一下（拍點），拍內的三連音全部是自動音 → 每拍 1 擊（rate 0.5）。
+  // P = hi-hat 踏板（pedal，譜表下方的 ✕）。第 1、3 拍是一般四分音符，不是三連。
+  //   第 1 小節  HH 1 2 2l 3 4 4l｜S: 2 4｜K: 1 3｜P: 2 4
+  //   第 2 小節  HH 1 2 2l 3 4 4l｜S: 3   ｜K: 1  ｜P: 3
+  //   第 3 小節  HH 1 2 2l 3 4 4l｜S: 1l 3｜K: 2l 4l｜P: 2 4
+  tripletShuffle: {
+    unit: "8t",
+    rate: 0.5,
+    steps:
+      "ride+kick/4  ride+snare+pedal/4t ~ride  " +
+      "ride+kick/4  ride+snare+pedal/4t ~ride  ",
+    // "hihat+kick/4  hihat/4t ~hihat  " +
+    // "hihat+snare+pedal/4  hihat/4t ~hihat  " +
+    // "hihat/4t ~snare  hihat+pedal/4t ~hihat+kick  " +
+    // "hihat+snare/4  hihat+pedal/4t ~hihat+kick",
+    loops: 10,
+    fill: "tripletBar",
+    next: ["tripletShuffle", "basic"],
   },
 
   // ─── 16 分切分（rate 1.1～1.5）────────────────────────
@@ -148,7 +219,7 @@ export const GROOVES = {
       "hihat+kick/8 hihat kick hihat+snare/8 hihat kick hihat/8 hihat+kick/8 hihat+snare/8 hihat/8",
     loops: [2, 4],
     fill: ["toms16", "syncTom"],
-    next: ["funkA", "syncA", "syncB", "full16", "offbeat"],
+    next: ["funkA", "syncA", "syncB", "full16", "offbeat", "triplet"],
   },
   // 密集切分：kick 落在 e 與 a。K: 1 1a 2e 3 3e 4a｜S: 2 4
   syncB: {
@@ -158,7 +229,7 @@ export const GROOVES = {
       "hihat+kick/8 hihat kick hihat+snare kick hihat/8 hihat+kick kick hihat/8 hihat+snare/8 hihat kick",
     loops: 2,
     fill: ["half16", "toms16"],
-    next: ["syncB", "funkA", "full16", "syncA", "basic"],
+    next: ["syncB", "funkA", "full16", "syncA", "basic", "triplet"],
   },
 
   // ─── 16 分全打（rate 2）──────────────────────────────
@@ -234,5 +305,28 @@ export const FILLS = {
     feel: "slower",
     steps: "tom1+crash tom2 floor kick+floor",
     land: "kick+crash",
+  },
+  // 8 分三連下行：每顆鼓一拍三下（一小節）
+  tripletToms: {
+    unit: "8t",
+    feel: "same",
+    steps: "snare snare snare tom1 tom1 tom1 tom2 tom2 tom2 floor floor floor",
+    land: "kick+crash",
+  },
+  // 練習譜第 4 小節：8 分三連，HH 在 1 與 l、S 在每拍的 t（另有 S 3）、K 1 2l 4l。
+  // 使用者每拍只打拍點，t l 是自動音。
+  tripletBar: {
+    unit: "8t",
+    feel: "same",
+    steps:
+      "hihat+kick ~snare ~hihat  hihat ~snare ~hihat+kick  " +
+      "hihat+snare ~snare ~hihat  hihat ~snare ~hihat+kick",
+  },
+  // 6 連音（3+3）繞鼓兩拍 —— 很密，只放在過門
+  sextTom: {
+    unit: "16t",
+    feel: "faster",
+    steps: "snare tom1 tom2 snare tom1 tom2 tom1 tom2 floor tom1 tom2 floor rest/2",
+    land: ["kick+crash", "crash"],
   },
 };
