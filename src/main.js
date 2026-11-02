@@ -49,6 +49,14 @@ const canvasCtx = canvas.getContext("2d");
 const button = document.getElementById("toggle");
 const frameEl = document.querySelector(".camera-frame");
 const rackEl = document.getElementById("soundRack");
+const rackTitleEl = document.getElementById("soundRackTitle");
+
+/** 音色區只在「位置對應」打法時顯示（節奏循環不看部位音色） */
+function syncSoundRackVisibility() {
+  const hidden = state.freeStyle !== "mapping";
+  rackEl.classList.toggle("is-hidden", hidden);
+  rackTitleEl?.classList.toggle("is-hidden", hidden);
+}
 const settingsToggle = document.getElementById("settingsToggle");
 const settingsPanel = document.getElementById("settingsPanel");
 const calibrateBtn = document.getElementById("calibrateBtn");
@@ -578,6 +586,7 @@ async function bootstrap() {
     zones: ZONES,
     zoneSound,
   });
+  syncSoundRackVisibility();
 
   // 設定工具面板
   initSettingsPanel({
@@ -603,6 +612,7 @@ async function bootstrap() {
     },
     onFreeStyleChange: (value) => {
       state.freeStyle = value;
+      syncSoundRackVisibility();
       logSettingChange("freeStyle", value);
     },
     // 難度切換於「下次載入譜面」時生效（重新選歌）。

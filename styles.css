@@ -1778,6 +1778,26 @@ body {
   .part-pick-btn { transition: none !important; }
 }
 
+/* 設定面板橫排容器（ui.js inlineGroup）：控制項排同一行，放不下自動換行 */
+.settings-inline-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+}
+/* 開關：標籤緊貼開關，不用 160px 標籤欄 */
+.settings-inline-group > .settings-control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* 按鈕：平分整行寬度 */
+.settings-button-group {
+  gap: 10px;
+}
+.settings-button-group > .settings-control-row {
+  flex: 1 1 0;
+}
+
 /* 設定面板動作按鈕（匯出 log 等） */
 .settings-action-btn {
   width: 100%;

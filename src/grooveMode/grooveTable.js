@@ -85,6 +85,7 @@ export const SOUNDS = {
   snare: 38,
   hihat: 42,
   pedal: 44,
+  hihat_open: 46,
   crash: 49,
   ride: 51,
   tom1: 50,

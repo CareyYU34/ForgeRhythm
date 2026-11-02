@@ -175,6 +175,13 @@ function createToggleControl({ label, value, onChange, id }) {
 }
 
 /** 分區小標題（設定面板用），回傳一個 div。 */
+/** 橫排容器：把幾個控制項排在同一行（放不下自動換行），省面板高度 */
+function inlineGroup(className = "") {
+  const el = document.createElement("div");
+  el.className = `settings-inline-group ${className}`.trim();
+  return el;
+}
+
 function sectionTitle(text) {
   const el = document.createElement("div");
   el.className = "settings-section-title";
@@ -427,7 +434,11 @@ export function initSettingsPanel({
     // ── 除錯 ──
     debugControlsEl.appendChild(sectionTitle("除錯"));
 
-    debugControlsEl.appendChild(
+    // 開關橫排
+    const toggleGroup = inlineGroup();
+    debugControlsEl.appendChild(toggleGroup);
+
+    toggleGroup.appendChild(
       createToggleControl({
         label: "顯示鏡頭畫面",
         value: showCameraFeed,
@@ -435,7 +446,7 @@ export function initSettingsPanel({
       }),
     );
 
-    debugControlsEl.appendChild(
+    toggleGroup.appendChild(
       createToggleControl({
         label: "全身節點",
         value: drawPoseDebugEnabled,
@@ -443,13 +454,16 @@ export function initSettingsPanel({
       }),
     );
 
-    debugControlsEl.appendChild(
+    toggleGroup.appendChild(
       createToggleControl({
         label: "PF 值顯示",
         value: showPFOverlay,
         onChange: onShowPFOverlayChange,
       }),
     );
+
+    // log 按鈕橫排（兩顆平分寬度）
+    const buttonGroup = inlineGroup("settings-button-group");
 
     // 匯出診斷 log —— 只在本地端出現（showExportLog 由 main 傳 perfLog.isLocal()）。
     if (showExportLog && typeof onToggleRecordLog === "function") {
@@ -463,11 +477,11 @@ export function initSettingsPanel({
           btn.classList.toggle("is-recording", recording);
         },
       });
-      debugControlsEl.appendChild(recordRow);
+      buttonGroup.appendChild(recordRow);
     }
 
     if (showExportLog && typeof onExportLog === "function") {
-      debugControlsEl.appendChild(
+      buttonGroup.appendChild(
         createButtonControl({
           id: "exportLogBtn",
           label: "匯出全部 log",
@@ -475,6 +489,7 @@ export function initSettingsPanel({
         }),
       );
     }
+    if (buttonGroup.children.length) debugControlsEl.appendChild(buttonGroup);
   }
 
   toggleBtn.addEventListener("click", (e) => {

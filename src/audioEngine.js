@@ -1,5 +1,12 @@
 import { perfLog } from "./poseEngine/perfLog.js";
 
+/**
+ * 鼓組取樣（全部）。自由模式的音色選單（bindSoundUI）、MIDI_TO_SOUND_ID 查表、
+ * 歌曲／分部／節奏循環模式的發聲都用這一張。選單順序 = 這裡的順序。
+ *
+ * ⚠ 新增取樣：這裡加一筆 → MIDI_TO_SOUND_ID 加 MIDI 對應 →
+ *   （要給 grooveMode 用的話）grooveTable.js 的 SOUNDS 加同名音名。
+ */
 export const SOUND_LIBRARY = [
   {
     id: "snare",
@@ -15,6 +22,38 @@ export const SOUND_LIBRARY = [
     id: "hihat",
     label: "Hi-hat",
     url: "./assets/sounds/42_Hi-Hat Closed Soft.wav",
+  },
+  {
+    id: "hihat_open",
+    label: "Hi-hat 開 Open",
+    url: "./assets/sounds/46_Hi-Hat Open.wav",
+  },
+  {
+    id: "pedal",
+    label: "踏鈸 Pedal Hi-hat",
+    url: "./assets/sounds/44_Hi-Hat Pedal.wav",
+  },
+  {
+    id: "cross_stick",
+    label: "邊擊 Cross Stick",
+    url: "./assets/sounds/37_Cross-stick.wav",
+  },
+  {
+    id: "crash",
+    label: "碎音鈸 Crash",
+    url: "./assets/sounds/49_57_Crash Cymbal.wav",
+  },
+  {
+    id: "ride",
+    label: "叮叮鈸 Ride",
+    url: "./assets/sounds/51_59_Ride Cymbal.wav",
+  },
+  { id: "tom1", label: "高音鼓 Tom 1", url: "./assets/sounds/50_Tom 2.wav" },
+  { id: "tom2", label: "中音鼓 Tom 2", url: "./assets/sounds/47_Tom 2.wav" },
+  {
+    id: "floor",
+    label: "落地鼓 Floor Tom",
+    url: "./assets/sounds/41_43_Floor Tom.wav",
   },
   {
     id: "none",
@@ -51,40 +90,6 @@ export const CUE_LIBRARY = [
   },
 ];
 
-/**
- * 分部模式（partSession）背景用的額外鼓組取樣。
- *
- * ⚠ 絕對不可併入 SOUND_LIBRARY。
- *   SOUND_LIBRARY 同時餵給自由模式的鼓組選單（bindSoundUI）。混進去會讓
- *   這幾個「只給歌曲背景用」的音色出現在使用者的鼓組選項裡。
- *
- * ⚠ 但 buffer 與 SOUND_LIBRARY 共用同一個 buffers Map —— playMidi /
- *   scheduleMidi 都靠 MIDI_TO_SOUND_ID → buffers 查表，兩者的 buffer
- *   必須在同一個 map 才查得到（這點與 CUE_LIBRARY 的獨立 cueBuffers 不同：
- *   引導音要與鼓組發聲路徑完全隔離，鼓組取樣則同屬一條發聲路徑）。
- */
-export const SONG_DRUM_LIBRARY = [
-  { id: "cross_stick", label: "Cross Stick", url: "./assets/sounds/37_Cross-stick.wav" },
-  {
-    id: "pedal",
-    label: "Pedal Hi-Hat",
-    url: "./assets/sounds/44_Hi-Hat Pedal.wav",
-  },
-  {
-    id: "ride",
-    label: "Ride Cymbal",
-    url: "./assets/sounds/51_59_Ride Cymbal.wav",
-  },
-  {
-    id: "crash",
-    label: "Crash Cymbal",
-    url: "./assets/sounds/49_57_Crash Cymbal.wav",
-  },
-  { id: "tom1", label: "Tom 1", url: "./assets/sounds/50_Tom 2.wav" },
-  { id: "tom2", label: "Tom 2", url: "./assets/sounds/47_Tom 2.wav" },
-  { id: "floor", label: "Floor Tom", url: "./assets/sounds/41_43_Floor Tom.wav" },
-];
-
 // 手部觸發區固定為大腿正面；heel 由膝蓋踢擊觸發。
 export const ZONES = [
   { id: "front", label: "大腿正面" },
@@ -92,14 +97,12 @@ export const ZONES = [
 ];
 
 /**
- * MIDI 音高 → 鼓組取樣 id（SOUND_LIBRARY 或 SONG_DRUM_LIBRARY 皆可）。
+ * MIDI 音高 → 鼓組取樣 id（SOUND_LIBRARY）。
  *
  * 歌曲模式的 sequencer 與背景排程器都回傳 MIDI 音高，需要這張表才能發聲。
- *   36/38/42 為原本的月亮 song mode 三音，走 SOUND_LIBRARY；
- *   37/44/51 為分部模式（中南美）新增，走 SONG_DRUM_LIBRARY；
- *   49 為節奏循環模式（grooveMode）過門用，同樣走 SONG_DRUM_LIBRARY；
- *   50/47/41/43 為 grooveMode 過門用的 tom，同樣走 SONG_DRUM_LIBRARY
- *   （41／43 共用 floor 取樣，與檔名一致）。
+ *   36/38/42 為原本的月亮 song mode 三音；37/44/51 為分部模式（中南美）新增；
+ *   49、50/47/41/43 為節奏循環模式（grooveMode）過門用（41／43 共用 floor 取樣，
+ *   與檔名一致）；46 為 open hi-hat。
  *
  * ⚠ 取樣 id 與 grooveMode/grooveTable.js 的 SOUNDS 音名一致（含大小寫），
  *   新增音色時兩邊用同一個名字。
@@ -110,6 +113,7 @@ export const MIDI_TO_SOUND_ID = {
   42: "hihat",
   37: "cross_stick",
   44: "pedal",
+  46: "hihat_open",
   49: "crash",
   51: "ride",
   50: "tom1",
@@ -226,14 +230,11 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
       await audioCtx.resume().catch(() => {});
     }
 
-    // 鼓組（含分部模式的額外鼓組）與引導音平行載入，全部完成才算就緒。
-    // ⚠ SONG_DRUM_LIBRARY 與 soundLibrary 同載入 buffers（同一條發聲路徑），
-    //   但不進 SOUND_LIBRARY，故不會出現在自由模式的鼓組選單。
+    // 鼓組與引導音平行載入，全部完成才算就緒。
     await Promise.all([
       ...soundLibrary
         .filter((s) => s.url)
         .map((s) => loadInto(buffers, s.id, s.url)),
-      ...SONG_DRUM_LIBRARY.map((s) => loadInto(buffers, s.id, s.url)),
       ...CUE_LIBRARY.map((c) => loadInto(cueBuffers, c.id, c.url)),
     ]);
 
