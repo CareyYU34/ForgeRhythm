@@ -327,6 +327,43 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
   }
 
   /**
+   * 依 MIDI 音高在絕對音訊時刻排程發聲，走主音量（自由模式節奏循環的自動音用）。
+   *
+   * 與 scheduleMidi 的差異：走 masterGain（與打擊音同一個音量），
+   * 且不加入 pending —— 由呼叫端保存回傳的節點、自己決定何時 stop()，
+   * cancelScheduled 不會動到它（反之亦然）。
+   *
+   * ⚠ 不觸發 hitSoundListener：那是「這一擊」的畫面回饋，自動音不是使用者打的。
+   *
+   * @param {number} midi
+   * @param {number} when AudioContext 時間軸上的絕對秒數（過期一律丟棄）
+   * @param {number} [gain=1]
+   * @returns {AudioBufferSourceNode|null}
+   */
+  function playMidiAt(midi, when, gain = 1) {
+    if (!audioCtx || !masterGain) return null;
+    const id = MIDI_TO_SOUND_ID[midi];
+    const buf = id ? buffers.get(id) : null;
+    if (!buf) return null;
+    if (when < audioCtx.currentTime) return null;
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+
+    if (gain === 1) {
+      src.connect(masterGain);
+    } else {
+      const g = audioCtx.createGain();
+      g.gain.value = gain;
+      src.connect(g);
+      g.connect(masterGain);
+    }
+
+    src.start(when);
+    return src;
+  }
+
+  /**
    * 依 MIDI 音高在絕對音訊時刻排程發聲（分部模式的背景伴奏用）。
    *
    * 與 playMidi 的差異：
@@ -468,6 +505,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     setHitSoundListener,
     // ── 歌曲模式 ──
     playMidi,
+    playMidiAt,
     scheduleMidi,
     scheduleCue,
     setCueVolume,

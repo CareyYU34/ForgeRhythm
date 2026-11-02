@@ -35,6 +35,13 @@
  * fill 結束時，以量到的基點與手速交給 grooveSelector 挑下一個 groove
  * （經由 engine.hit(pickNext) —— 引擎只給候選與密度，不知道時間）。
  *
+ * ═══ 自動音（譜上 "~"）═══
+ *
+ * 引擎回傳「自動音距離這一擊幾拍」，這裡用 tracker.getBeatMs() 換成毫秒，
+ * 交給 audio.playMidiAt 排程。下一擊進來（或閒置歸零）時，還沒響的自動音全部取消 ——
+ * 使用者打得比預測早，不會跟他打的音疊在一起；打得晚，自動音照常響完、等他。
+ * 量不到速度（剛開始打）時這一擊的自動音不響。
+ *
  * ═══ 重音預覽（getUpcomingAccent）═══
  *
  * 畫面每幀問「接下來 n 擊有沒有 crash」，用來把手部節點畫得抬更高
@@ -50,12 +57,17 @@ import { MIDI_TO_SOUND_ID } from "../audioEngine.js";
 
 const isCrash = (midi) => MIDI_TO_SOUND_ID[midi] === "crash";
 
+/** 鬼音（譜上括號）的音量倍率 */
+export const GHOST_GAIN = 0.3;
+
+const gainOf = (note) => (note.ghost ? GHOST_GAIN : 1);
+
 /** 超過這麼久沒打，回到起始 groove 第一格（ms）。約 120 BPM 下三拍。 */
 export const GROOVE_RESET_MS = 1500;
 
 /**
  * @param {Object}   deps
- * @param {Object}   deps.audio         audioEngine（需 playMidi）
+ * @param {Object}   deps.audio         audioEngine（需 playMidi、playMidiAt、now）
  * @param {Function} deps.playZone      原本的 audioEngine.playZone（位置對應用）
  * @param {Function} deps.getFreeStyle  取得當下打法："groove"｜"mapping"
  */
@@ -63,11 +75,36 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   const engine = createGrooveEngine();
   const tracker = createTempoTracker();
   let lastHitMs = -Infinity;
+  /** 已排程、可能還沒響的自動音：{ src, when } */
+  let scheduledAutos = [];
   /** 這段閒置已歸零過（預覽與打擊共用，避免歸零兩次） */
   let idleResetDone = false;
 
+  /** 取消還沒開始響的自動音（已經在響的讓它響完，不切尾音） */
+  function cancelAutos() {
+    const t = audio.now();
+    for (const { src, when } of scheduledAutos) {
+      if (when > t) src.stop();
+    }
+    scheduledAutos = [];
+  }
+
+  function scheduleAutos(autos) {
+    const beatMs = tracker.getBeatMs();
+    if (!autos.length || beatMs === null) return;
+    const t0 = audio.now();
+    for (const { notes, offsetBeats } of autos) {
+      const when = t0 + (offsetBeats * beatMs) / 1000;
+      for (const note of notes) {
+        const src = note.midi === undefined ? null : audio.playMidiAt(note.midi, when, gainOf(note));
+        if (src) scheduledAutos.push({ src, when });
+      }
+    }
+  }
+
   function resetIfIdle(nowMs) {
     if (idleResetDone || nowMs - lastHitMs <= GROOVE_RESET_MS) return;
+    cancelAutos();
     engine.reset();
     tracker.reset();
     idleResetDone = true;
@@ -98,15 +135,18 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
       if (tracker.isDuplicate(nowMs)) return;
       lastHitMs = nowMs;
       idleResetDone = false;
+      cancelAutos();
 
       // ⚠ 順序：先結算間隔，再走格（引擎可能在這一擊決定下一個 groove）
       tracker.hit(nowMs);
-      const { notes, beats, inFill } = engine.hit(pickNext);
+      const { notes, beats, inFill, autos } = engine.hit(pickNext);
       tracker.setStep(beats, inFill);
 
-      for (const midi of notes) {
-        if (midi !== undefined) audio.playMidi(midi, 1);
+      for (const note of notes) {
+        if (note.midi !== undefined) audio.playMidi(note.midi, gainOf(note));
       }
+      // ⚠ 在 tracker.hit 之後：getBeatMs 要含這一擊剛結算的間隔
+      scheduleAutos(autos);
     },
 
     /**

@@ -39,6 +39,12 @@
  *
  * 離群值：每段以「每拍毫秒」的中位數為準，超出 [÷OUTLIER, ×OUTLIER] 的間隔不計
  *   （中途停頓等）。
+ *
+ * ═══ 每拍毫秒（getBeatMs）═══
+ *
+ * 給自動音排程用（譜上的拍數 → 毫秒），要跟得上使用者「現在」的速度：
+ * 這段 groove 已有 BEAT_LIVE_MIN 個間隔 → 取最近 BEAT_LIVE_N 個的中位數；
+ * 否則（剛換段、過門中）退回基點。過門的手速不照譜，不拿來換算。
  */
 
 /** 兩擊相隔小於這個值視為同一擊（雙手同時打）（ms） */
@@ -60,6 +66,10 @@ const OUTLIER = 3;
 
 /** 新基點與舊基點相差在這個倍數內才採用（慢慢漂移） */
 const DRIFT = 1.2;
+
+/** getBeatMs：這段 groove 至少要有幾個間隔才用即時值、取最近幾個的中位數 */
+const BEAT_LIVE_MIN = 2;
+const BEAT_LIVE_N = 3;
 
 /** 第一次取基點時，超過這個 BPM 就 ÷2 直到低於它 */
 const FOLD_MAX = 140;
@@ -148,6 +158,14 @@ export function createTempoTracker() {
     return baselineBpm;
   }
 
+  /** 目前一拍幾毫秒（自動音排程用）；量不到回傳 null */
+  function getBeatMs() {
+    if (!fillIntervals.length && grooveIntervals.length >= BEAT_LIVE_MIN) {
+      return median(grooveIntervals.slice(-BEAT_LIVE_N).map((iv) => iv.ms / iv.beats));
+    }
+    return baselineBpm ? 60000 / baselineBpm : null;
+  }
+
   /** 目前這段 fill 的手速（每秒幾擊）；fill 還沒開始或不足一個間隔回傳 null */
   function getFillHitRate() {
     if (!fillIntervals.length) return null;
@@ -159,5 +177,5 @@ export function createTempoTracker() {
     return bpm === null ? null : bpm / 60;
   }
 
-  return { isDuplicate, hit, setStep, reset, getBaselineBpm, getFillHitRate };
+  return { isDuplicate, hit, setStep, reset, getBaselineBpm, getBeatMs, getFillHitRate };
 }
