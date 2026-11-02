@@ -802,7 +802,7 @@ export function createAdaptiveMonitor({ state }) {
     );
     if (nowMs - lastHandHitMs < MONITOR_TUNING.KNEE_HAND_GATE_MS) return;
 
-    // history 不足兩點 = 剛被 clearTrackingHistory 清掉，poseLoop 本幀沒有算特徵，
+    // history 不足兩點 = 膝點剛失真被 clearKneeTracking 清掉，poseLoop 本幀沒有算特徵，
     // kneeState 裡的 windowDy 是舊值，不能拿來累積近失。
     const historyKey = side === "left" ? "leftKneeHistory" : "rightKneeHistory";
     const history = state[historyKey];

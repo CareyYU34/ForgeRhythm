@@ -125,17 +125,55 @@ function skipPoints(points, threshold) {
   return false;
 }
 
-function clearTrackingHistory(state) {
-  state.prevLeftHand = null;
-  state.prevRightHand = null;
-  state.leftKneeHistory = [];
-  state.rightKneeHistory = [];
-  state.preSec = 0;
-  // Hip / Knee EMA：遮蔽失真後重置，避免殘留舊值拉偏下一輪平滑
-  state.emaLeftHip = null;
-  state.emaRightHip = null;
-  state.emaLeftKnee = null;
-  state.emaRightKnee = null;
+/** 每一側在 state 上的欄位名（逐側清除用） */
+const SIDE_KEYS = {
+  left: {
+    prevHand: "prevLeftHand",
+    cordon: "leftThighCordon",
+    hand: "leftState",
+    kneeHistory: "leftKneeHistory",
+    knee: "leftKneeState",
+    emaHip: "emaLeftHip",
+    emaKnee: "emaLeftKnee",
+  },
+  right: {
+    prevHand: "prevRightHand",
+    cordon: "rightThighCordon",
+    hand: "rightState",
+    kneeHistory: "rightKneeHistory",
+    knee: "rightKneeState",
+    emaHip: "emaRightHip",
+    emaKnee: "emaRightKnee",
+  },
+};
+
+/**
+ * 該側手這幀不能判斷（手掌或髖看不到）：清掉速度來源與 PF，並解除武裝。
+ * 下擊段峰值、strikeDescending 一併歸零 —— 否則手消失前的殘值會讓手一出現就觸發，
+ * 或讓 strikeDescending 卡在 true、把同側膝蓋一直遮罩住。
+ * lastHitMs / strikeLandMs 保留：冷卻與膝蓋遮罩照時間自然過期。
+ */
+function clearHandTracking(state, side) {
+  const k = SIDE_KEYS[side];
+  state[k.prevHand] = null;
+  state[k.cordon] = null;
+  state[k.hand] = {
+    ...state[k.hand],
+    didHit: false,
+    canHit: false,
+    strokePeakPF: null,
+    strokeSpeedMax: 0,
+    strikeDescending: false,
+    belowSinceMs: null,
+  };
+}
+
+/** 該側膝蓋這幀看不到：清掉膝蓋 history 與 EMA，避免髒資料延續到下一幀 */
+function clearKneeTracking(state, side) {
+  const k = SIDE_KEYS[side];
+  state[k.kneeHistory] = [];
+  state[k.emaKnee] = null;
+  state[k.knee] = { ...state[k.knee], didHit: false };
 }
 
 export function createInitialPoseState() {
@@ -628,36 +666,43 @@ export function createPredictWebcam({
           );
         }
 
-        // 只要關鍵點失真或可見度不足，就清掉 history，避免髒資料延續到下一幀。
-        if (
-          skipPoints(pickedLeftHand, state.visibilityThreshold) ||
-          skipPoints(pickedRightHand, state.visibilityThreshold)
-        ) {
-          clearTrackingHistory(state);
-          return;
+        // 關鍵點失真或可見度不足 → 逐側、逐部位清掉 history，避免髒資料延續到下一幀。
+        //   膝蓋只看膝點；手要膝 + 髖 + 手掌都在（PF 以髖→膝的大腿線為基準）。
+        // ⚠ 不能整幀 return：舊版三點綁在一起，手掌一出畫面（舉手、被身體擋住），
+        //   雙膝 history 每幀被清空、永遠湊不滿視窗 → 膝蓋跟著觸發不了。
+        const vis = state.visibilityThreshold;
+        const hipOk = {
+          left: !skipPoints([leftHip], vis),
+          right: !skipPoints([rightHip], vis),
+        };
+        const kneeOk = {
+          left: !skipPoints([leftKnee], vis),
+          right: !skipPoints([rightKnee], vis),
+        };
+        const handOk = {
+          left: kneeOk.left && hipOk.left && !skipPoints([leftHandBase], vis),
+          right: kneeOk.right && hipOk.right && !skipPoints([rightHandBase], vis),
+        };
+        for (const side of ["left", "right"]) {
+          if (!hipOk[side]) state[SIDE_KEYS[side].emaHip] = null;
+          if (!kneeOk[side]) clearKneeTracking(state, side);
+          if (!handOk[side]) clearHandTracking(state, side);
         }
+        if (!kneeOk.left && !kneeOk.right) return; // 兩邊都沒有可判斷的部位
 
         // ── Hip / Knee EMA 平滑（同 PF 的 EMA 邏輯，減少 landmark 抖動對 PF 的影響）──
-        state.emaLeftHip = emaPoint(
-          state.emaLeftHip,
-          leftHip,
-          HIP_KNEE_EMA_ALPHA,
-        );
-        state.emaRightHip = emaPoint(
-          state.emaRightHip,
-          rightHip,
-          HIP_KNEE_EMA_ALPHA,
-        );
-        state.emaLeftKnee = emaPoint(
-          state.emaLeftKnee,
-          leftKnee,
-          HIP_KNEE_EMA_ALPHA,
-        );
-        state.emaRightKnee = emaPoint(
-          state.emaRightKnee,
-          rightKnee,
-          HIP_KNEE_EMA_ALPHA,
-        );
+        if (hipOk.left) {
+          state.emaLeftHip = emaPoint(state.emaLeftHip, leftHip, HIP_KNEE_EMA_ALPHA);
+        }
+        if (hipOk.right) {
+          state.emaRightHip = emaPoint(state.emaRightHip, rightHip, HIP_KNEE_EMA_ALPHA);
+        }
+        if (kneeOk.left) {
+          state.emaLeftKnee = emaPoint(state.emaLeftKnee, leftKnee, HIP_KNEE_EMA_ALPHA);
+        }
+        if (kneeOk.right) {
+          state.emaRightKnee = emaPoint(state.emaRightKnee, rightKnee, HIP_KNEE_EMA_ALPHA);
+        }
 
         // 用平滑後的 hip/knee 取代原始值，供 thighLineDistance 計算；
         // handBase 仍使用原始值（手部自己有 PF_SMOOTH_ALPHA 平滑）。
@@ -673,27 +718,32 @@ export function createPredictWebcam({
         ];
 
         if (!state.drawPoseDebugEnabled) {
-          drawPose(pickedLeftHand, canvasCtx, getVideoDrawRect);
-          drawPose(pickedRightHand, canvasCtx, getVideoDrawRect);
+          if (handOk.left) drawPose(pickedLeftHand, canvasCtx, getVideoDrawRect);
+          if (handOk.right) drawPose(pickedRightHand, canvasCtx, getVideoDrawRect);
         }
 
         // 這一段保留原本手部命中判斷需要的單幀資料。
+        // 手不能判斷的一側：cordon / prevHand 已由 clearHandTracking 清為 null。
         const dtSec = Math.max(1e-4, videoTimeSec - state.preSec);
         const prevLeftHandPt = state.prevLeftHand;
         const prevRightHandPt = state.prevRightHand;
 
-        state.leftThighCordon = thighLineDistance(smoothedLeftHand);
-        state.rightThighCordon = thighLineDistance(smoothedRightHand);
-        state.prevLeftHand = pickedLeftHand[1];
-        state.prevRightHand = pickedRightHand[1];
+        if (handOk.left) {
+          state.leftThighCordon = thighLineDistance(smoothedLeftHand);
+          state.prevLeftHand = pickedLeftHand[1];
+        }
+        if (handOk.right) {
+          state.rightThighCordon = thighLineDistance(smoothedRightHand);
+          state.prevRightHand = pickedRightHand[1];
+        }
         state.preSec = videoTimeSec;
 
         // ── PF 值顯示（overlay debug）──
         if (state.showPFOverlay) {
           drawPFOverlay({
             canvasCtx,
-            leftHandPt: pickedLeftHand[1],
-            rightHandPt: pickedRightHand[1],
+            leftHandPt: handOk.left ? pickedLeftHand[1] : null,
+            rightHandPt: handOk.right ? pickedRightHand[1] : null,
             // EMA 平滑後的 hip / knee，與 thighLineDistance 使用的來源一致
             leftHip: state.emaLeftHip ?? leftHip,
             leftKnee: state.emaLeftKnee ?? leftKnee,
@@ -709,14 +759,16 @@ export function createPredictWebcam({
         }
 
         // 手部速度（單幀）
-        const leftHandSpeed = prevLeftHandPt
+        const leftHandSpeed =
+          handOk.left && prevLeftHandPt
           ? Math.hypot(
               pickedLeftHand[1].x - prevLeftHandPt.x,
               pickedLeftHand[1].y - prevLeftHandPt.y,
             ) / dtSec
           : 0;
 
-        const rightHandSpeed = prevRightHandPt
+        const rightHandSpeed =
+          handOk.right && prevRightHandPt
           ? Math.hypot(
               pickedRightHand[1].x - prevRightHandPt.x,
               pickedRightHand[1].y - prevRightHandPt.y,
@@ -730,19 +782,23 @@ export function createPredictWebcam({
 
         // 膝蓋改用短視窗特徵做判斷，不再只看前後兩點，先把最新膝蓋點放進 history，再把這段短視窗摘要成可判斷的特徵。
         // 原本在 if (state.calibrationProfile) 內，導致 calibration 完成後初期 history 為空，無法正確判斷膝蓋動作。現在改成只要有足夠的膝蓋點就嘗試判斷，提升穩定度。
-        state.leftKneeHistory = pushPointHistory(
-          state.leftKneeHistory,
-          leftKnee,
-          videoTimeSec,
-          KNEE_WINDOW_SEC,
-        );
-
-        state.rightKneeHistory = pushPointHistory(
-          state.rightKneeHistory,
-          rightKnee,
-          videoTimeSec,
-          KNEE_WINDOW_SEC,
-        );
+        // 看不到的一側 history 已由 clearKneeTracking 清空，不推入失真點。
+        if (kneeOk.left) {
+          state.leftKneeHistory = pushPointHistory(
+            state.leftKneeHistory,
+            leftKnee,
+            videoTimeSec,
+            KNEE_WINDOW_SEC,
+          );
+        }
+        if (kneeOk.right) {
+          state.rightKneeHistory = pushPointHistory(
+            state.rightKneeHistory,
+            rightKnee,
+            videoTimeSec,
+            KNEE_WINDOW_SEC,
+          );
+        }
 
         // 肩寬同樣在 guard 外更新，校準完成那一刻就已有可用的尺度。
         updateBodyScale(state, poseLandmarks, state.visibilityThreshold);
@@ -758,18 +814,23 @@ export function createPredictWebcam({
           // 基準優先用 adaptiveMonitor 追蹤的實際靜止膝位（kneeRestY）：預設 profile 的
           // kneeBaseline 是別人的鏡頭構圖，實測差 0.12–0.15 → 補償恆為 0.2–0.28，
           // 手在半空就觸發、抬手也回不到武裝線（poseLog 2026-10-30）。
-          const leftKneeAdj = calcKneeRisingAdj(
-            profile,
-            "left",
-            state.emaLeftKnee?.y ?? leftKnee.y,
-            state.kneeRestY?.left,
-          );
-          const rightKneeAdj = calcKneeRisingAdj(
-            profile,
-            "right",
-            state.emaRightKnee?.y ?? rightKnee.y,
-            state.kneeRestY?.right,
-          );
+          // 膝蓋看不到的一側手也不判斷（handOk 含膝），補償量用不到 → 0
+          const leftKneeAdj = kneeOk.left
+            ? calcKneeRisingAdj(
+                profile,
+                "left",
+                state.emaLeftKnee?.y ?? leftKnee.y,
+                state.kneeRestY?.left,
+              )
+            : 0;
+          const rightKneeAdj = kneeOk.right
+            ? calcKneeRisingAdj(
+                profile,
+                "right",
+                state.emaRightKnee?.y ?? rightKnee.y,
+                state.kneeRestY?.right,
+              )
+            : 0;
 
           // 註：重新武裝（PF > PF_HIT）與下擊段峰值速度追蹤都內建在
           // monitoringTriggerConditions 中，這裡只負責餵門檻與單幀手速。
