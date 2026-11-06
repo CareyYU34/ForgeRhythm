@@ -21,6 +21,10 @@
  *        ⚠ groove／過門的第一個音不能是自動音；rest 與 land 不能加 "~"。
  *        ⚠ 自動音不算擊數：rate 與 selector 用的密度都只算要打的那幾擊。
  *
+ * 開鈸：反拍的 hihat 會隨機變成 hihat_open（鬼音除外，規則見 hatOpener.js），譜上不用寫。
+ *        想固定開鈸就直接寫 "hihat_open"。hihat 或 pedal 響起時會截斷還在響的開鈸，
+ *        hihat 截斷時會自動疊上踏鈸聲，譜上不用寫 pedal。
+ *
  * 休止：寫 "rest"，時值寫法同音名（"rest/16"、"rest/8."，沒寫 = unit）。
  *        rest 不是一擊、不用打：它的長度併進前一擊，只影響 BPM 換算與密度。
  *        所以 "kick/16 rest/8" 與 "kick/8." 完全等價，照譜面習慣寫即可。

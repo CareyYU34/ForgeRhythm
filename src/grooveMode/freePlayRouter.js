@@ -42,6 +42,18 @@
  * 使用者打得比預測早，不會跟他打的音疊在一起；打得晚，自動音照常響完、等他。
  * 量不到速度（剛開始打）時這一擊的自動音不響。
  *
+ * ═══ Flam（譜上 "{snare}"）═══
+ *
+ * 倚音不能比打擊早響，所以倚音在打擊當下響、主音晚 FLAM_MS（自動音同理，
+ * 以排程時間點為準）。同一擊的其他音不等主音，照常在打擊當下響。
+ *
+ * ═══ 開鈸（hatOpener）與 Choke ═══
+ *
+ * 引擎給的譜先經過 hatOpener，反拍的 hihat 可能變成 hihat_open（規則見 hatOpener.js）。
+ * 閉鈸或踏鈸響起時，還在響的開鈸在 HAT_CHOKE_MS 內淡出（audio.chokeOpenHats），
+ * 就像踩合真的 hi-hat。真的截斷到開鈸時疊上踏鈸聲（chick）；譜上寫的 pedal 本身就是
+ * 踏鈸，不再多疊。自動音的 choke 與 chick 落在排程時間點，自動音被取消時一併取消。
+ *
  * ═══ 重音預覽（getUpcomingAccent）═══
  *
  * 畫面每幀問「接下來 n 擊有沒有 crash」，用來把手部節點畫得抬更高
@@ -53,51 +65,111 @@
 import { createGrooveEngine } from "./grooveEngine.js";
 import { createTempoTracker } from "./tempoTracker.js";
 import { selectNextGroove } from "./grooveSelector.js";
+import { createHatOpener } from "./hatOpener.js";
+import { SOUNDS } from "./grooveTable.js";
 import { MIDI_TO_SOUND_ID } from "../audioEngine.js";
 
 const isCrash = (midi) => MIDI_TO_SOUND_ID[midi] === "crash";
+
+/** 這顆音會踩合 hi-hat，截斷還在響的開鈸 */
+const closesHat = (note) => note.midi === SOUNDS.hihat || note.midi === SOUNDS.pedal;
+const isPedal = (note) => note.midi === SOUNDS.pedal;
 
 /** 鬼音（譜上括號）的音量倍率 */
 export const GHOST_GAIN = 0.3;
 
 const gainOf = (note) => (note.ghost ? GHOST_GAIN : 1);
 
+/** Flam（譜上大括號）倚音的音量倍率 */
+export const GRACE_GAIN = 0.4;
+
+/**
+ * Flam 倚音到主音的間隔（ms）。真實的 flam 約 20–40ms：太短聽起來像一聲加厚，
+ * 太長變成兩下（drag）。
+ * ⚠ 打擊當下響的是倚音（不能提早響），所以主音比打擊晚這麼多。
+ */
+export const FLAM_MS = 30;
+
+/** 開鈸被踩合時的淡出時間（ms）。太短會有爆音，太長聽不出踩合。 */
+export const HAT_CHOKE_MS = 40;
+
+/** 截斷開鈸時疊上的踏鈸聲（chick）音量倍率 */
+export const HAT_CHICK_GAIN = 0.7;
+
 /** 超過這麼久沒打，回到起始 groove 第一格（ms）。約 120 BPM 下三拍。 */
 export const GROOVE_RESET_MS = 1500;
 
 /**
  * @param {Object}   deps
- * @param {Object}   deps.audio         audioEngine（需 playMidi、playMidiAt、now）
+ * @param {Object}   deps.audio         audioEngine（需 playMidi、playMidiAt、chokeOpenHats、now）
  * @param {Function} deps.playZone      原本的 audioEngine.playZone（位置對應用）
  * @param {Function} deps.getFreeStyle  取得當下打法："groove"｜"mapping"
  */
 export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   const engine = createGrooveEngine();
   const tracker = createTempoTracker();
+  const hatOpener = createHatOpener();
   let lastHitMs = -Infinity;
   /** 已排程、可能還沒響的自動音：{ src, when } */
   let scheduledAutos = [];
+  /** 自動音排程的 choke：{ undo, when } */
+  let scheduledChokes = [];
   /** 這段閒置已歸零過（預覽與打擊共用，避免歸零兩次） */
   let idleResetDone = false;
 
-  /** 取消還沒開始響的自動音（已經在響的讓它響完，不切尾音） */
+  /** 取消還沒開始響的自動音（已經在響的讓它響完，不切尾音）與它們的 choke */
   function cancelAutos() {
     const t = audio.now();
     for (const { src, when } of scheduledAutos) {
       if (when > t) src.stop();
     }
+    for (const { undo, when } of scheduledChokes) {
+      if (when > t) undo();
+    }
     scheduledAutos = [];
+    scheduledChokes = [];
+  }
+
+  /** 打擊當下發聲：一般音立刻響；Flam 立刻響倚音、FLAM_MS 後響主音 */
+  function playNotes(notes) {
+    if (notes.some(closesHat)) {
+      const t = audio.now();
+      const { cut } = audio.chokeOpenHats(t, HAT_CHOKE_MS / 1000);
+      // ⚠ 用 playMidiAt：chick 是這一擊的附帶聲音，不觸發打擊監聽。也不放進 scheduledAutos
+      if (cut && !notes.some(isPedal)) audio.playMidiAt(SOUNDS.pedal, t, HAT_CHICK_GAIN);
+    }
+    for (const note of notes) {
+      if (note.midi === undefined) continue;
+      if (!note.flam) {
+        audio.playMidi(note.midi, gainOf(note));
+        continue;
+      }
+      audio.playMidi(note.midi, GRACE_GAIN);
+      // ⚠ 主音不放進 scheduledAutos：它屬於這一擊，下一擊進來時不取消
+      audio.playMidiAt(note.midi, audio.now() + FLAM_MS / 1000, gainOf(note));
+    }
   }
 
   function scheduleAutos(autos) {
     const beatMs = tracker.getBeatMs();
     if (!autos.length || beatMs === null) return;
     const t0 = audio.now();
+    const schedule = (midi, when, gain) => {
+      const src = audio.playMidiAt(midi, when, gain);
+      if (src) scheduledAutos.push({ src, when });
+    };
     for (const { notes, offsetBeats } of autos) {
       const when = t0 + (offsetBeats * beatMs) / 1000;
+      if (notes.some(closesHat)) {
+        const { cut, undo } = audio.chokeOpenHats(when, HAT_CHOKE_MS / 1000);
+        scheduledChokes.push({ undo, when });
+        if (cut && !notes.some(isPedal)) schedule(SOUNDS.pedal, when, HAT_CHICK_GAIN);
+      }
       for (const note of notes) {
-        const src = note.midi === undefined ? null : audio.playMidiAt(note.midi, when, gainOf(note));
-        if (src) scheduledAutos.push({ src, when });
+        if (note.midi === undefined) continue;
+        // 與打擊當下一致：倚音落在自動音的時間點，主音晚 FLAM_MS
+        if (note.flam) schedule(note.midi, when, GRACE_GAIN);
+        schedule(note.midi, note.flam ? when + FLAM_MS / 1000 : when, gainOf(note));
       }
     }
   }
@@ -107,6 +179,7 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
     cancelAutos();
     engine.reset();
     tracker.reset();
+    hatOpener.reset();
     idleResetDone = true;
   }
 
@@ -139,12 +212,11 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
 
       // ⚠ 順序：先結算間隔，再走格（引擎可能在這一擊決定下一個 groove）
       tracker.hit(nowMs);
-      const { notes, beats, inFill, autos } = engine.hit(pickNext);
-      tracker.setStep(beats, inFill);
+      const step = engine.hit(pickNext);
+      tracker.setStep(step.beats, step.inFill);
+      const { notes, autos } = hatOpener.apply(step);
 
-      for (const note of notes) {
-        if (note.midi !== undefined) audio.playMidi(note.midi, gainOf(note));
-      }
+      playNotes(notes);
       // ⚠ 在 tracker.hit 之後：getBeatMs 要含這一擊剛結算的間隔
       scheduleAutos(autos);
     },

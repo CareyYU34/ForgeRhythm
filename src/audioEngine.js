@@ -199,6 +199,30 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
    */
   const pending = new Set();
 
+  /**
+   * 正在響（或已排程）的開鈸：{ when, gain: GainNode, level, end, chokeAt }。
+   * 給 chokeOpenHats 淡出用；只有呼叫 chokeOpenHats 的模式才會被截斷。
+   */
+  const openHats = new Set();
+
+  /**
+   * 把打擊音接上主音量。開鈸一定有自己的 GainNode，choke 才能單獨淡出它。
+   */
+  function connectHit(src, id, gain, when) {
+    if (gain === 1 && id !== "hihat_open") {
+      src.connect(masterGain);
+      return;
+    }
+    const g = audioCtx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(masterGain);
+    if (id !== "hihat_open") return;
+    const hat = { when, gain: g, level: gain, end: when + src.buffer.duration, chokeAt: null };
+    openHats.add(hat);
+    src.addEventListener("ended", () => openHats.delete(hat));
+  }
+
   async function loadInto(map, id, url) {
     const res = await fetch(encodeURI(url));
     if (!res.ok) throw new Error(`${url}（HTTP ${res.status}）`);
@@ -311,15 +335,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
 
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
-
-    if (gain === 1) {
-      src.connect(masterGain);
-    } else {
-      const g = audioCtx.createGain();
-      g.gain.value = gain;
-      src.connect(g);
-      g.connect(masterGain);
-    }
+    connectHit(src, id, gain, audioCtx.currentTime);
 
     src.start(audioCtx.currentTime);
     noteHitSound("midi", audioCtx.currentTime, id);
@@ -350,18 +366,41 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
 
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
-
-    if (gain === 1) {
-      src.connect(masterGain);
-    } else {
-      const g = audioCtx.createGain();
-      g.gain.value = gain;
-      src.connect(g);
-      g.connect(masterGain);
-    }
+    connectHit(src, id, gain, when);
 
     src.start(when);
     return src;
+  }
+
+  /**
+   * 在 when 開始淡出還在響的開鈸（踩合 hi-hat）。
+   * 淡出後不 stop：靜音的節點會自己播完，取消 choke 時才不必重新安排結束時間。
+   *
+   * ⚠ 已有 choke 的開鈸不重複處理，否則取消較晚的 choke 會把已淡出的開鈸救回來。
+   *
+   * @param {number} when AudioContext 時間軸上的絕對秒數
+   * @param {number} fadeSec 淡出秒數
+   * @returns {{cut: boolean, undo: Function}} cut = 有截斷到開鈸；
+   *   undo = 取消這次 choke（給還沒發生的自動音用）
+   */
+  function chokeOpenHats(when, fadeSec) {
+    const choked = [];
+    for (const hat of openHats) {
+      if (hat.chokeAt !== null || hat.when >= when || hat.end <= when) continue;
+      hat.chokeAt = when;
+      hat.gain.gain.setValueAtTime(hat.level, when);
+      hat.gain.gain.linearRampToValueAtTime(0, when + fadeSec);
+      choked.push(hat);
+    }
+    return {
+      cut: choked.length > 0,
+      undo() {
+        for (const hat of choked) {
+          hat.gain.gain.cancelScheduledValues(hat.chokeAt);
+          hat.chokeAt = null;
+        }
+      },
+    };
   }
 
   /**
@@ -507,6 +546,7 @@ export function createAudioEngine(soundLibrary = SOUND_LIBRARY) {
     // ── 歌曲模式 ──
     playMidi,
     playMidiAt,
+    chokeOpenHats,
     scheduleMidi,
     scheduleCue,
     setCueVolume,

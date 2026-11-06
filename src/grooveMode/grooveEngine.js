@@ -75,36 +75,48 @@ const unitDur = (unit) => parseDur(String(unit));
 /** 休止符的音名 */
 const REST = "rest";
 
-/** "(snare)" → { name: "snare", ghost: true }；"snare" → { name: "snare", ghost: false } */
+/**
+ * "(snare)" → { name: "snare", ghost: true, flam: false }
+ * "{snare}" → { name: "snare", ghost: false, flam: true }
+ * "snare"   → { name: "snare", ghost: false, flam: false }
+ * 括號互相包（"({snare})"）不拆，name 會是未知音名 → validateTable 警告。
+ */
 function parseNote(text) {
-  const m = /^\((.*)\)$/.exec(text);
-  return m ? { name: m[1], ghost: true } : { name: text, ghost: false };
+  const ghost = /^\((.*)\)$/.exec(text);
+  if (ghost) return { name: ghost[1], ghost: true, flam: false };
+  const flam = /^\{(.*)\}$/.exec(text);
+  if (flam) return { name: flam[1], ghost: false, flam: true };
+  return { name: text, ghost: false, flam: false };
 }
 
-/** 音名 → 一顆音 { midi, ghost }（midi 可能是 undefined = 寫錯的音名） */
+/** 音名 → 一顆音 { midi, ghost, flam }（midi 可能是 undefined = 寫錯的音名） */
 function toNote(text) {
-  const { name, ghost } = parseNote(text);
-  return { midi: SOUNDS[name], ghost };
+  const { name, ghost, flam } = parseNote(text);
+  return { midi: SOUNDS[name], ghost, flam };
 }
 
 /**
- * "kick hihat/16 rest kick+(ride)" → [{ notes: [{ midi: 36, ghost: false }], beats, auto }, ...]
+ * "kick hihat/16 rest kick+(ride)" → [{ notes: [{ midi: 36, ghost: false, flam: false }], beats, auto }, ...]
  * rest 不是一擊：它的拍數併進前一擊（打一下走一格不變）。
  * 開頭的 rest 沒有前一擊 → 併進一輪的最後一擊（groove 循環時剛好接上）。
  * auto = 自動音（"~"）：仍是一格，但不用打，跟著前一擊自動響。
+ * offbeat = 不落在拍點上（8 分的 &、16 分的 e／a、三連的後兩下；rest 也佔位置）。
  */
 function parseSteps(text, unit) {
   const steps = [];
   let leadingRestBeats = 0;
+  let position = 0;
   for (const token of text.trim().split(/\s+/)) {
     const { names, dur, auto } = parseToken(token);
     const beats = toBeats(dur ?? unitDur(unit));
+    const offbeat = !isInt(position);
+    position += beats;
     if (names[0] === REST) {
       if (steps.length) steps[steps.length - 1].beats += beats;
       else leadingRestBeats += beats;
       continue;
     }
-    steps.push({ notes: names.map(toNote), beats, auto });
+    steps.push({ notes: names.map(toNote), beats, auto, offbeat });
   }
   if (steps.length) steps[steps.length - 1].beats += leadingRestBeats;
   return steps;
@@ -146,9 +158,9 @@ function validateTable() {
         else if (isFill && i === 0) warn(`${where}: 過門不能以 rest 開頭`);
       }
       for (const text of names) {
-        const { name, ghost } = parseNote(text);
+        const { name, ghost, flam } = parseNote(text);
         if (name === REST) {
-          if (ghost) warn(`${where}: rest 不能加括號 "${token}"`);
+          if (ghost || flam) warn(`${where}: rest 不能加括號 "${token}"`);
         } else if (!(name in SOUNDS)) warn(`${where}: 未知音名 "${name}"`);
       }
       if (dur === null) return;
@@ -264,10 +276,12 @@ export function createGrooveEngine() {
 
   /**
    * 走一格，回傳這一擊的內容：
-   *   notes   要發的音：[{ midi, ghost }]（midi 可能是 undefined = 寫錯的音名；ghost = 鬼音）
+   *   notes   要發的音：[{ midi, ghost, flam }]（midi 可能是 undefined = 寫錯的音名；
+ *           ghost = 鬼音；flam = 前面帶一個倚音，倚音與主音的間隔由上一層決定）
    *   beats   這一擊到下一擊的拍數（含後面的自動音）—— 給上一層換算速度用
    *   inFill  這一擊是否屬於過門
-   *   autos   跟著這一擊的自動音：[{ notes, offsetBeats }]，offsetBeats = 距離這一擊幾拍
+   *   offbeat 這一擊是否不落在拍點上
+   *   autos   跟著這一擊的自動音：[{ notes, offsetBeats, offbeat }]，offsetBeats = 距離這一擊幾拍
    *
    * @param {Function} [pickNext]  過門結束時挑下一個 groove：
    *   pickNext({ candidates: [{ id, density }], currentDensity, feel }) → groove id
@@ -277,6 +291,7 @@ export function createGrooveEngine() {
     const inFill = fillId !== null;
     const steps = inFill ? fillSteps[fillId] : grooveSteps[grooveId];
     let { beats } = steps[step];
+    const { offbeat } = steps[step];
     const notes = pendingLand.length ? pendingLand : steps[step].notes;
     pendingLand = [];
     step++;
@@ -284,7 +299,7 @@ export function createGrooveEngine() {
     // 緊接的自動音一起走完（不會跨段：每段第一個音不是自動音，見 validateTable）
     const autos = [];
     while (step < steps.length && steps[step].auto) {
-      autos.push({ notes: steps[step].notes, offsetBeats: beats });
+      autos.push({ notes: steps[step].notes, offsetBeats: beats, offbeat: steps[step].offbeat });
       beats += steps[step].beats;
       step++;
     }
@@ -310,7 +325,7 @@ export function createGrooveEngine() {
         fillId = plannedFill;
       }
     }
-    return { notes, beats, inFill, autos };
+    return { notes, beats, inFill, offbeat, autos };
   }
 
   /**
