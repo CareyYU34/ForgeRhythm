@@ -6,8 +6,13 @@
  * ═══ 規則 ═══
  *
  *   1. 從 START_GROOVE 開始（陣列則隨機），打一下走一格。
- *   2. 一輪走完 → 輪數 +1；輪數達到該 groove 的 loops → 進入過門。
+ *   2. 一輪走完 → 輪數 +1；只剩過門佔的長度時 → 進入過門。
+ *      loops 是整段的總輪數（含過門）：loops 4、一輪 4 拍、過門 4 拍 → 3 輪 + 過門 = 4 小節。
+ *      過門佔幾輪由它的總拍數（含 rest）換算，所以一輪 2 拍的 groove 接 4 拍過門也對得齊。
  *      loops 是陣列時，每次進入該 groove 隨機挑一個輪數。
+ *      過門開頭的 rest 不是休止，而是「這段由 groove 繼續打」：groove 從第一格走滿
+ *      rest 的拍數後，直接切到過門的第一個音（grooveHead）。
+ *      這幾擊仍算 groove（inFill = false），基點照常量。
  *   3. 過門走完 → 從 next 挑下一個 groove，輪數歸零。
  *      上一層有傳 pickNext 就交給它挑（依速度，見 grooveSelector.js），否則隨機。
  *      若過門有 land（陣列則隨機），取代新 groove 的第一擊（例如 kick → kick+crash）。
@@ -96,13 +101,13 @@ function toNote(text) {
 }
 
 /**
- * "kick hihat/16 rest kick+(ride)" → [{ notes: [{ midi: 36, ghost: false, flam: false }], beats, auto }, ...]
+ * "kick hihat/16 rest kick+(ride)" → { steps: [{ notes: [{ midi: 36, ghost: false, flam: false }], beats, auto }, ...], leadingRestBeats }
  * rest 不是一擊：它的拍數併進前一擊（打一下走一格不變）。
- * 開頭的 rest 沒有前一擊 → 併進一輪的最後一擊（groove 循環時剛好接上）。
+ * 開頭的 rest 沒有前一擊 → 拍數另外回傳（leadingRestBeats），groove 與過門的處理不同。
  * auto = 自動音（"~"）：仍是一格，但不用打，跟著前一擊自動響。
  * offbeat = 不落在拍點上（8 分的 &、16 分的 e／a、三連的後兩下；rest 也佔位置）。
  */
-function parseSteps(text, unit) {
+function parseTokens(text, unit) {
   const steps = [];
   let leadingRestBeats = 0;
   let position = 0;
@@ -118,13 +123,36 @@ function parseSteps(text, unit) {
     }
     steps.push({ notes: names.map(toNote), beats, auto, offbeat });
   }
+  return { steps, leadingRestBeats };
+}
+
+/** groove 的一輪：開頭的 rest 併進最後一擊（循環時剛好接上） */
+function parseSteps(text, unit) {
+  const { steps, leadingRestBeats } = parseTokens(text, unit);
   if (steps.length) steps[steps.length - 1].beats += leadingRestBeats;
   return steps;
+}
+
+/**
+ * groove 從第一格起的 headBeats 拍（一輪不夠長就循環），接在過門前面。
+ * 跨過界線的那一擊照響，拍數截到界線；界線之後的音（含自動音）不響 —— 那裡已經是過門。
+ */
+function grooveHead(steps, headBeats) {
+  const head = [];
+  let position = 0;
+  for (let i = 0; headBeats - position > 1e-6; i = (i + 1) % steps.length) {
+    const beats = Math.min(steps[i].beats, headBeats - position);
+    head.push({ ...steps[i], beats, fromGroove: true });
+    position += steps[i].beats;
+  }
+  return head;
 }
 
 const pick = (v) => (Array.isArray(v) ? v[Math.floor(Math.random() * v.length)] : v);
 const asList = (v) => (Array.isArray(v) ? v : [v]);
 const isInt = (x) => Math.abs(x - Math.round(x)) < 1e-6;
+
+const sumBeats = (steps) => steps.reduce((sum, s) => sum + s.beats, 0);
 
 /** 要打的擊數（不含自動音） */
 const countHits = (steps) => steps.filter((s) => !s.auto).length;
@@ -138,24 +166,20 @@ function validateTable() {
       warn(`${where}: unit 必須是 ${NOTE_VALUES.join("/")}（三連加 t，例如 "8t"）`);
     }
   };
-  /**
-   * 檢查 steps（withDuration=false 用於 land：不能寫時值、不能有 rest、不能是自動音）
-   * isFill=true：過門只播一次，開頭的 rest 沒有上一輪可以併 → 警告
-   */
-  const checkSteps = (where, text, withDuration = true, isFill = false) => {
+  /** 檢查 steps（withDuration=false 用於 land：不能寫時值、不能有 rest、不能是自動音） */
+  const checkSteps = (where, text, withDuration = true) => {
     const tokens = text.trim().split(/\s+/);
     const sounding = tokens.map(parseToken).filter((t) => t.names[0] !== REST);
     if (!sounding.some((t) => !t.auto)) warn(`${where}: 至少要有一擊（不含自動音）`);
     // 自動音跟著前一擊響；第一個音沒有前一擊（一擊不會跨到上一輪／上一段）
     else if (sounding[0].auto) warn(`${where}: 第一個音不能是自動音`);
-    tokens.forEach((token, i) => {
+    tokens.forEach((token) => {
       const { names, dur, auto } = parseToken(token);
       if (auto && !withDuration) warn(`${where}: land 不能是自動音 "${token}"`);
       if (names.includes(REST)) {
         if (auto) warn(`${where}: rest 不能加 "${AUTO}" "${token}"`);
         if (names.length > 1) warn(`${where}: rest 不能與音名同時寫 "${token}"`);
         else if (!withDuration) warn(`${where}: land 不能是 rest`);
-        else if (isFill && i === 0) warn(`${where}: 過門不能以 rest 開頭`);
       }
       for (const text of names) {
         const { name, ghost, flam } = parseNote(text);
@@ -208,7 +232,15 @@ function validateTable() {
     }
 
     const steps = parseSteps(g.steps, g.unit);
-    const totalBeats = steps.reduce((sum, s) => sum + s.beats, 0);
+    const totalBeats = sumBeats(steps);
+    for (const f of asList(g.fill)) {
+      if (!FILLS[f]) continue;
+      const parsed = parseTokens(FILLS[f].steps, FILLS[f].unit);
+      const fillBeats = sumBeats(parsed.steps) + parsed.leadingRestBeats;
+      for (const n of asList(g.loops)) {
+        if (fillBeats - n * totalBeats > 1e-6) warn(`${where}: loops ${n} 比過門 "${f}" 短`);
+      }
+    }
     if (!isInt(totalBeats)) warn(`${where}: 一輪 ${totalBeats} 拍，不是整數拍`);
     // 實際倍率 = 每拍平均擊數 ÷ 2（8 分全打 = 1）；自動音不用打，不算擊數
     const actualRate = countHits(steps) / totalBeats / 2;
@@ -223,7 +255,7 @@ function validateTable() {
   for (const [id, f] of Object.entries(FILLS)) {
     const where = `FILLS.${id}`;
     checkUnit(where, f.unit);
-    checkSteps(where, f.steps, true, true);
+    checkSteps(where, f.steps);
     checkTuplets(where, f.steps, f.unit);
     if (!["faster", "same", "slower"].includes(f.feel)) {
       warn(`${where}: feel 必須是 "faster"｜"same"｜"slower"`);
@@ -238,37 +270,44 @@ export function createGrooveEngine() {
   const grooveSteps = {};
   for (const [id, g] of Object.entries(GROOVES)) grooveSteps[id] = parseSteps(g.steps, g.unit);
   const fillSteps = {};
-  for (const [id, f] of Object.entries(FILLS)) fillSteps[id] = parseSteps(f.steps, f.unit);
+  for (const [id, f] of Object.entries(FILLS)) fillSteps[id] = parseTokens(f.steps, f.unit);
   /**
    * 每個 groove 的密度：每拍平均擊數（不含自動音）。
    * selector 拿使用者的手速換算 BPM，要的是「手」每拍打幾下，不是每拍響幾聲。
    */
   const density = {};
   for (const [id, steps] of Object.entries(grooveSteps)) {
-    density[id] = countHits(steps) / steps.reduce((sum, s) => sum + s.beats, 0);
+    density[id] = countHits(steps) / sumBeats(steps);
   }
 
   let grooveId, fillId, step, loopCount, loopTarget;
   /** 待取代下一擊的音（過門的 land），落地後清空 */
   let pendingLand;
-  /** 這個 groove 循環完要進的過門、與過門結束時的 land（進入 groove 時先挑好，peek 用） */
-  let plannedFill, plannedLand;
+  /** 這個 groove 循環完要進的過門、過門結束時的 land、實際要走的格子（進入 groove 時先挑好，peek 用） */
+  let plannedFill, plannedLand, plannedFillSteps;
 
   /** land 設定 → 一擊的音："kick+crash" → [{ midi: 36, … }, { midi: 49, … }]；沒寫 land → []（不取代） */
   const landNotes = (land) => (land ? pick(land).split("+").map(toNote) : []);
 
-  /** 進入某個 groove：輪數歸零並挑這次要循環幾輪、之後的過門與 land */
+  /**
+   * 進入某個 groove：輪數歸零並挑之後的過門與 land、過門之前要循環幾輪。
+   * loops 已被過門佔滿（loopTarget = 0）→ 直接從過門開始。
+   */
   function enterGroove(id) {
     grooveId = id;
     loopCount = 0;
-    loopTarget = pick(GROOVES[id].loops);
     plannedFill = pick(GROOVES[id].fill);
     plannedLand = landNotes(FILLS[plannedFill]?.land);
+    const { steps = [], leadingRestBeats = 0 } = fillSteps[plannedFill] ?? {};
+    plannedFillSteps = [...grooveHead(grooveSteps[id], leadingRestBeats), ...steps];
+    // ⚠ 三連的拍數加總有浮點誤差，4.0000001 拍不能算成佔 2 輪
+    const fillRounds = Math.ceil((sumBeats(steps) + leadingRestBeats) / sumBeats(grooveSteps[id]) - 1e-6);
+    loopTarget = Math.max(0, pick(GROOVES[id].loops) - fillRounds);
+    fillId = loopTarget === 0 ? plannedFill : null; // 非 null = 正在過門
   }
 
   function reset() {
     enterGroove(pick(START_GROOVE)); // 陣列則隨機
-    fillId = null; // 非 null = 正在過門
     step = 0;
     pendingLand = [];
   }
@@ -279,7 +318,7 @@ export function createGrooveEngine() {
    *   notes   要發的音：[{ midi, ghost, flam }]（midi 可能是 undefined = 寫錯的音名；
  *           ghost = 鬼音；flam = 前面帶一個倚音，倚音與主音的間隔由上一層決定）
    *   beats   這一擊到下一擊的拍數（含後面的自動音）—— 給上一層換算速度用
-   *   inFill  這一擊是否屬於過門
+   *   inFill  這一擊是否屬於過門（過門開頭由 groove 打的幾擊不算）
    *   offbeat 這一擊是否不落在拍點上
    *   autos   跟著這一擊的自動音：[{ notes, offsetBeats, offbeat }]，offsetBeats = 距離這一擊幾拍
    *
@@ -288,8 +327,8 @@ export function createGrooveEngine() {
    *   沒傳則隨機。
    */
   function hit(pickNext) {
-    const inFill = fillId !== null;
-    const steps = inFill ? fillSteps[fillId] : grooveSteps[grooveId];
+    const steps = fillId !== null ? plannedFillSteps : grooveSteps[grooveId];
+    const inFill = fillId !== null && !steps[step].fromGroove;
     let { beats } = steps[step];
     const { offbeat } = steps[step];
     const notes = pendingLand.length ? pendingLand : steps[step].notes;
@@ -310,7 +349,6 @@ export function createGrooveEngine() {
         // 過門結束 → 換 groove；land（一擊的內容，進入 groove 時已挑好）留給新 groove 的第一擊
         const { feel } = FILLS[fillId];
         pendingLand = plannedLand;
-        fillId = null;
         const next = GROOVES[grooveId].next;
         enterGroove(
           pickNext
@@ -338,7 +376,7 @@ export function createGrooveEngine() {
     const out = [];
     let f = fillId, s = step, lc = loopCount, land = pendingLand;
     while (out.length < n) {
-      const steps = f ? fillSteps[f] : grooveSteps[grooveId];
+      const steps = f ? plannedFillSteps : grooveSteps[grooveId];
       if (!steps[s].auto) {
         out.push(land.length ? land : steps[s].notes);
         land = [];
