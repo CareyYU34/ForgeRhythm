@@ -207,7 +207,7 @@ export function createInitialPoseState() {
     showPFOverlay: false,
     // 膝蓋觸發開關：false = 膝蓋完全不判斷、不產生任何打擊事件
     //（adaptiveMonitor 的膝蓋自適應也暫停，避免關閉期間門檻被調動）
-    kneeTriggerEnabled: true,
+    kneeTriggerEnabled: false,
 
     // ── 校準 profile（null = 未校準，不發聲）──
     calibrationProfile: null,

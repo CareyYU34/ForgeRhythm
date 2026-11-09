@@ -48,6 +48,16 @@ export const SOUND_LIBRARY = [
     label: "叮叮鈸 Ride",
     url: "./assets/sounds/51_59_Ride Cymbal.wav",
   },
+  {
+    id: "ride_bell",
+    label: "叮叮鈸鈴 Ride Bell",
+    url: "./assets/sounds/53_Ride Bell.wav",
+  },
+  {
+    id: "splash",
+    label: "水鈸 Splash",
+    url: "./assets/sounds/55_Splash Cymbal.wav",
+  },
   { id: "tom1", label: "高音鼓 Tom 1", url: "./assets/sounds/50_Tom 2.wav" },
   { id: "tom2", label: "中音鼓 Tom 2", url: "./assets/sounds/47_Tom 2.wav" },
   {
@@ -102,7 +112,7 @@ export const ZONES = [
  * 歌曲模式的 sequencer 與背景排程器都回傳 MIDI 音高，需要這張表才能發聲。
  *   36/38/42 為原本的月亮 song mode 三音；37/44/51 為分部模式（中南美）新增；
  *   49、50/47/41/43 為節奏循環模式（grooveMode）過門用（41／43 共用 floor 取樣，
- *   與檔名一致）；46 為 open hi-hat。
+ *   與檔名一致）；46 為 open hi-hat；53／55 為 ride bell、splash。
  *
  * ⚠ 取樣 id 與 grooveMode/grooveTable.js 的 SOUNDS 音名一致（含大小寫），
  *   新增音色時兩邊用同一個名字。
@@ -116,6 +126,8 @@ export const MIDI_TO_SOUND_ID = {
   46: "hihat_open",
   49: "crash",
   51: "ride",
+  53: "ride_bell",
+  55: "splash",
   50: "tom1",
   47: "tom2",
   43: "floor",

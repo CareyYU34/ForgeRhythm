@@ -24,8 +24,8 @@
  *        不用打：跟著前一擊，依使用者當下的速度自動響（freePlayRouter 排程）。
  *        用在使用者不容易打出來的節奏（例如三連音）：使用者只打拍點，
  *        拍與拍之間由自動音補上。使用者提早打下一擊，還沒響的自動音會取消。
- *        ⚠ groove／過門的第一個音不能是自動音；rest 與 land 不能加 "~"。
- *        ⚠ 自動音不算擊數：rate 與 selector 用的密度都只算要打的那幾擊。
+ *        ⚠ groove／過門的第一個音不能是自動音；rest 不能加 "~"。
+ *        ⚠ 自動音不算擊數：selector 用的密度只算要打的那幾擊。
  *
  * 開鈸：反拍的 hihat 會隨機變成 hihat_open（鬼音除外，規則見 hatOpener.js），譜上不用寫。
  *        想固定開鈸就直接寫 "hihat_open"。hihat 或 pedal 響起時會截斷還在響的開鈸，
@@ -35,10 +35,10 @@
  *        rest 不是一擊、不用打：它的長度併進前一擊，只影響 BPM 換算與密度。
  *        所以 "kick/16 rest/8" 與 "kick/8." 完全等價，照譜面習慣寫即可。
  *        ⚠ groove 開頭的 rest 併進一輪的最後一擊；過門開頭的 rest 由 groove 接手（見 FILLS 的 steps）。
- *        ⚠ 過門的總拍數（含 rest）決定它佔掉幾輪（見 GROOVES 的 loops），要補滿小節；
+ *        ⚠ 過門的總拍數（含 rest）決定它佔掉幾輪（見 LOOPS），要補滿小節；
  *          過門結尾的 rest 就是用來補滿的，不會等待：fill 手速只看每秒幾擊，
  *          下一個 groove 在過門最後一擊當下就決定，照樣在使用者下一擊接上。
- *        ⚠ rest 不能跟音名用 "+" 連接，land 也不能是 rest。
+ *        ⚠ rest 不能跟音名用 "+" 連接。
  *
  * 時值：音名後面接 "/幾分音符"，附點加 "."；沒寫 = 該項的 unit。
  *        "hihat+kick/8"  八分
@@ -57,35 +57,29 @@
  *        慣例：unit 設成該項最常出現的時值，只有例外才標。
  *
  * GROOVES 每一項：
- *   unit   最小單位是幾分音符（8、16，或三連 "8t"），也是 steps 時值的預設值
- *   rate   倍率（分類標籤）：每拍平均擊數 ÷ 2，以「8 分全打」= 1。
- *          unit 不是 8 時必填，例如切分 16 分 ≈ 1.25、16 分全打 = 2、8 分三連全打 = 1.5。
- *          ⚠ 引擎選 groove 用的是由時值算出來的實際密度，不是這個標籤；
- *            載入時兩者差超過 20% 會在 console 警告（附上實際值）。
- *   steps  一輪的內容；一輪的總拍數必須是整數拍
- *   loops  這一段總共幾輪，過門（含開頭由 groove 打的部分）算在裡面；給陣列則每次進入此 groove 時隨機挑一個
- *          例如一輪 4 拍、過門 4 拍：loops 4 = 3 輪 + 過門。
- *          一輪 2 拍、過門 4 拍：loops 4 = 2 輪 + 過門（過門佔 2 輪的長度）。
- *          ⚠ 過門佔滿 loops 時整段只有過門，groove 不會完整出現一輪。
- *   fill   過門 id；給陣列則隨機挑一個
- *   next   過門結束後換到哪個 groove；給陣列則隨機挑一個
- *          （可以包含自己 = 過門後回到同一個 groove）
+ *   unit     最小單位是幾分音符（8、16，或三連 "8t"），也是 steps 時值的預設值
+ *   special  （選填）true = 特殊節奏（shuffle 類）：不參與依速度挑選，
+ *            只在計時器到時優先出現（見 freePlayRouter 的 SPECIAL_*）
+ *   steps    一輪的內容；一輪的總拍數必須是整數拍
+ *   fill     過門 id；給陣列則隨機挑一個
+ *            空陣列 [] = 沒有過門：輪數走完直接換下一個 groove，整段都是 groove
+ *            ⚠ special 只配 shuffle 用的過門（fill2D／2E／2H／3D），一般 groove 不要用這幾個
+ *
+ * 每段幾輪不在這裡寫，所有 groove 共用 LOOPS。
+ *
+ * 下一個 groove 不在表裡指定：所有非 special 的 groove 都是候選，
+ * 由 grooveSelector 依使用者的速度挑（密度由 steps 算出，不用標）。
+ *
+ * 換段的第一擊一律加 crash（取代 hihat／hihat_open／ride／ride_bell，其他音照響；
+ * 上一段最後一擊已有 crash 則不加）。規則在 grooveEngine.js，譜上不用寫。
  *
  * FILLS 每一項：
  *   unit   最小單位是幾分音符，也是 steps 時值的預設值
- *   feel   這個過門容易讓人打擊 "faster" 變快／"same" 維持／"slower" 變慢
- *          （銜接下一個 groove 時的判斷參考，不是強制變速）
  *   steps  過門內容，只播一次
  *          開頭的 rest = 這幾拍繼續打 groove，過門從第一個音才開始（照譜面寫半小節過門）：
  *          "rest/2 snare snare" → groove 打前 2 拍，第 3 拍起換成過門。
  *          是取代不是疊加：過門開始後，groove 那幾拍的音（含 hihat）都不響。
  *          ⚠ groove 跨過界線的那一擊照響；界線之後的音與自動音不響。
- *   land   （選填）過門結束後，直接取代「下一個 groove 第一擊」的音，
- *          例如 "kick+crash" → 下一擊從 kick 變成 kick+crash。給陣列則隨機挑一個。
- *          ⚠ land 是一擊的內容，不寫時值（時值跟著被取代的那一擊）。
- *          ⚠ 是取代不是疊加：只寫 "crash" 就只有 crash，原本的 kick 不會響。
- *          ⚠ 收尾的 crash 要寫在這裡，不要寫進 steps 最後一格 ——
- *            寫在 steps 會早一拍（落在過門裡），land 才會落在新段落的第 1 拍。
  *
  * 音名只能用 SOUNDS 裡有的。有新取樣時，先到 audioEngine 的
  * MIDI_TO_SOUND_ID 加上 MIDI 對應，再到 SOUNDS 加音名。
@@ -105,18 +99,24 @@ export const SOUNDS = {
   hihat_open: 46,
   crash: 49,
   ride: 51,
+  ride_bell: 53,
+  splash: 55,
   tom1: 50,
   tom2: 47,
   floor: 43,
 };
 
+/**
+ * 每一段的總輪數，進入 groove 時從中隨機挑一個（所有 groove 共用）。
+ * 過門（含開頭由 groove 打的部分）算在裡面：
+ *   一輪 4 拍、過門 4 拍：3 = 2 輪 + 過門。
+ *   一輪 2 拍、過門 4 拍：3 = 1 輪 + 過門（過門佔 2 輪的長度）。
+ * ⚠ 過門佔滿輪數時整段只有過門，groove 不會完整出現一輪（載入時會警告）。
+ */
+export const LOOPS = [3, 4];
+
 /** 開始打擊時、以及閒置歸零後的起始 groove */
-export const START_GROOVE = [
-  "tripletBackbeat",
-  "tripletHalfTime",
-  "tripletSync",
-  "tripletGhost",
-];
+export const START_GROOVE = ["rock8A", "rock8B", "rock8C", "rock8D"];
  
 /*
  * 註解的拍點記法：1 e & a = 一拍裡的四個 16 分位置。
@@ -128,72 +128,360 @@ export const START_GROOVE = [
  *   三連與直拍差 3:2，折不回來。（每拍 1 擊、其餘自動音的不受影響。）
  *
  * ═══ 三連 shuffle 組 ═══
- * 使用者每拍只打一下（拍點），拍內的三連音都是自動音 → 四個 groove 密度相同（每拍 1 擊），
- * 手速不變就能互換。fill、next 都共用，由 selector 在同密度中隨機。
+ * 使用者每拍只打一下（拍點），拍內的三連音都是自動音 → 四個 groove 密度相同（每拍 1 擊）。
+ * 標 special：計時器到時才出現（四個中隨機），不參與依速度挑選。
  */
-const SHUFFLE_FILLS = ["shuffleHalfBar", "shuffleCrash"];
-const SHUFFLE_NEXT = ["tripletBackbeat", "tripletHalfTime", "tripletSync", "tripletGhost"];
-/** 一段 4 或 8 小節（含過門那一小節） */
-const SHUFFLE_LOOPS = [4];
+/*
+ * ═══ 命名 ═══
+ * groove id = 組名 + A～D，組內由簡到繁。組別見 GROOVES 裡的分隔註解。
+ */
 
 export const GROOVES = {
+  // ─── shuffle：ride 三連，使用者每拍只打一下，其餘是自動音 ───
   // Ride 全程三連 shuffle。K: 1 3｜S: 2 4｜P: 2 4
-  tripletBackbeat: {
+  shuffleA: {
     unit: "8t",
-    rate: 1,
+    special: true,
     steps:
       "ride+kick/4 ride+snare+pedal/4t ~ride " +
       "ride+kick/4 ride+snare+pedal/4t ~ride",
-    loops: SHUFFLE_LOOPS,
-    fill: SHUFFLE_FILLS,
-    next: SHUFFLE_NEXT,
+    fill: ["fill2D", "fill2E", "fill2H", "fill3D"],
   },
   // Half-time：snare 落在第 3 拍。K: 1｜S: 3｜P: 3
-  tripletHalfTime: {
+  shuffleB: {
     unit: "8t",
-    rate: 1,
-    steps:
-      "ride+kick/4 ride/4t ~ride " +
-      "ride+snare+pedal/4 ride/4t ~ride",
-    loops: SHUFFLE_LOOPS,
-    fill: SHUFFLE_FILLS,
-    next: SHUFFLE_NEXT,
+    special: true,
+    steps: "ride+kick/4 ride/4t ~ride " + "ride+snare+pedal/4 ride/4t ~ride",
+    fill: ["fill2D", "fill2E", "fill2H", "fill3D"],
   },
   // 切分：第 1 拍沒有 kick。K: 2l 4l｜S: 1l 3｜P: 2 4
-  tripletSync: {
+  shuffleC: {
     unit: "8t",
-    rate: 1,
+    special: true,
     steps:
       "ride/4t ~snare ride+pedal/4t ~ride+kick " +
       "ride+snare/4 ride+pedal/4t ~ride+kick",
-    loops: SHUFFLE_LOOPS,
-    fill: SHUFFLE_FILLS,
-    next: SHUFFLE_NEXT,
+    fill: ["fill2D", "fill2E", "fill2H", "fill3D"],
   },
   // 三連全響，每拍中間是鬼音。K: 1 2l 4l｜S: 3｜鬼音 S: 每拍的 t
-  tripletGhost: {
+  shuffleD: {
     unit: "8t",
-    rate: 1,
+    special: true,
     steps:
       "ride+kick ~(snare) ~ride ride ~(snare) ~ride+kick " +
       "ride+snare ~(snare) ~ride ride ~(snare) ~ride+kick",
-    loops: SHUFFLE_LOOPS,
-    fill: SHUFFLE_FILLS,
-    next: SHUFFLE_NEXT,
+    fill: ["fill2D", "fill2E", "fill2H", "fill3D"],
+  },
+
+  // ─── rock8：8 分 hi-hat，kick 落在 8 分上 ───
+  // K: 1 3｜S: 2 4
+  rock8A: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat hihat+snare hihat " +
+      "hihat+kick hihat hihat+snare hihat",
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+  },
+  // K: 1 1& 2& 3&｜S: 2 4
+  rock8B: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat+kick hihat+snare hihat+kick " +
+      "hihat hihat+kick hihat+snare hihat",
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+  },
+  // K: 1 2& 3｜S: 2 4
+  rock8C: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat hihat+snare hihat+kick " +
+      "hihat+kick hihat hihat+snare hihat",
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+  },
+  // K: 1 3 3&｜S: 2 4
+  rock8D: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat hihat+snare hihat " +
+      "hihat+kick hihat+kick hihat+snare hihat",
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+  },
+
+  // ─── rock16：8 分 hi-hat，kick 帶一兩個 16 分 ───
+  // K: 1 2& 2a 3&｜S: 2 4
+  rock16A: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat hihat+snare hihat+kick/16 kick/16 " +
+      "hihat hihat+kick hihat+snare hihat",
+    fill: ["fill1B", "fill1C", "fill2A", "fill2F", "fill2G", "fill3A"],
+  },
+  // K: 1 3 3a｜S: 2 4
+  rock16B: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat hihat+snare hihat " +
+      "hihat+kick hihat/16 kick/16 hihat+snare hihat",
+    fill: ["fill1B", "fill1C", "fill2A", "fill2F", "fill2G", "fill3A"],
+  },
+  // K: 1 1a 3&｜S: 2 4
+  rock16C: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat/16 kick/16 hihat+snare hihat " +
+      "hihat hihat+kick hihat+snare hihat",
+    fill: ["fill1B", "fill1C", "fill2A", "fill2F", "fill2G", "fill3A"],
+  },
+  // K: 1 1a 3 3e 4e｜S: 2 4
+  rock16D: {
+    unit: 16,
+    steps:
+      "hihat+kick/8 hihat kick hihat+snare/8 hihat/8 " +
+      "hihat+kick kick hihat/8 hihat+snare kick hihat/8",
+    fill: ["fill1B", "fill1C", "fill2A", "fill2F", "fill2G", "fill3A"],
+  },
+
+  // ─── funk：8 分 hi-hat，kick 密集的 16 分切分 ───
+  // K: 1 1& 1a 2a 3e 3& 4e 4&｜S: 2 4
+  funkA: {
+    unit: 16,
+    steps:
+      "hihat+kick/8 hihat+kick kick hihat+snare/8 hihat kick " +
+      "hihat kick hihat kick hihat+snare kick hihat+kick/8",
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+  },
+  // K: 1 1a 2& 2a 3e 3& 4e｜S: 2 4
+  funkB: {
+    unit: 16,
+    steps:
+      "hihat+kick/8 hihat kick hihat+snare/8 hihat+kick kick " +
+      "hihat kick hihat+kick/8 hihat+snare kick hihat/8",
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+  },
+  // K: 1 1e 2& 2a 3 4&｜S: 2 4
+  funkC: {
+    unit: 8,
+    steps:
+      "hihat+kick/16 kick/16 hihat hihat+snare hihat+kick/16 kick/16 " +
+      "hihat+kick hihat hihat+snare hihat+kick",
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+  },
+  // K: 1 2& 2a 3e 3& 4a｜S: 2 4
+  funkD: {
+    unit: 16,
+    steps:
+      "hihat+kick/8 hihat/8 hihat+snare/8 hihat+kick kick " +
+      "hihat kick hihat+kick/8 hihat+snare/8 hihat kick",
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+  },
+
+  // ─── disco：四踩：kick 每拍都打，hi-hat（或開鈸）在反拍 ───
+  // K: 1 2 3 4｜S: 2 4
+  discoA: {
+    unit: 8,
+    steps: "kick ride kick+snare ride " + "kick ride kick+snare ride",
+    fill: ["fill2B", "fill2C", "fill4A", "fill4B", "fill4C"],
+  },
+  // K: 1 2 3 4｜S: 2 4｜鬼音 S: 2a 3e 4a
+  discoB: {
+    unit: 16,
+    steps:
+      "kick/8 ride/8 kick+snare/8 ride (snare) " +
+      "kick (snare) ride/8 kick+snare/8 ride (snare)",
+    fill: ["fill2B", "fill2C", "fill4A", "fill4B", "fill4C"],
+  },
+  // K: 1 2 3 4｜S: 2 4｜P: 1 2 3 4｜開鈸在每拍的 &
+  discoC: {
+    unit: 8,
+    steps:
+      "kick+pedal hihat_open kick+snare+pedal hihat_open " +
+      "kick+pedal hihat_open kick+snare+pedal hihat_open",
+    fill: ["fill2B", "fill2C", "fill4A", "fill4B", "fill4C"],
+  },
+  // K: 1 2 3 4｜S: 1e 2 2a 3e 4｜P: 1 2 3 4｜開鈸在每拍的 &
+  discoD: {
+    unit: 16,
+    steps:
+      "kick+pedal snare hihat_open/8 kick+snare+pedal/8 hihat_open snare " +
+      "kick+pedal snare hihat_open/8 kick+snare+pedal/8 hihat_open/8",
+    fill: ["fill2B", "fill2C", "fill4A", "fill4B", "fill4C"],
+  },
+
+  // ─── ghost：8 分 hi-hat 加 snare 鬼音 ───
+  // K: 1｜S: 2 4｜鬼音 S: 2a 3e
+  ghostA: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat hihat+snare hihat/16 (snare)/16 " +
+      "hihat/16 (snare)/16 hihat hihat+snare hihat",
+    fill: ["fill1B", "fill2C", "fill2F", "fill3A", "fill3B"],
+  },
+  // K: 1 1& 3& 4&｜S: 2 4｜鬼音 S: 2a 3e
+  ghostB: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat+kick hihat+snare hihat/16 (snare)/16 " +
+      "hihat/16 (snare)/16 hihat+kick hihat+snare hihat+kick",
+    fill: ["fill1B", "fill2C", "fill2F", "fill3A", "fill3B"],
+  },
+  // K: 1 1& 2& 3& 4&｜S: 2 4｜鬼音 S: 2a 3e
+  ghostC: {
+    unit: 8,
+    steps:
+      "hihat+kick hihat+kick hihat+snare hihat+kick/16 (snare)/16 " +
+      "hihat/16 (snare)/16 hihat+kick hihat+snare hihat+kick",
+    fill: ["fill1B", "fill2C", "fill2F", "fill3A", "fill3B"],
+  },
+  // K: 1 1a 2a 3&｜S: 2 4｜鬼音 S: 3e
+  ghostD: {
+    unit: 16,
+    steps:
+      "hihat+kick/8 hihat kick hihat+snare/8 hihat kick " +
+      "hihat (snare) hihat+kick/8 hihat+snare/8 hihat/8",
+    fill: ["fill1B", "fill2C", "fill2F", "fill3A", "fill3B"],
+  },
+
+  // ─── hat16：16 分 hi-hat ───
+  // K: 1 3｜S: 2 4
+  hat16A: {
+    unit: 16,
+    steps:
+      "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat " +
+      "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat",
+    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+  },
+  // K: 1 2a 3｜S: 2 4
+  hat16B: {
+    unit: 16,
+    steps:
+      "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat+kick " +
+      "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat",
+    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+  },
+  // K: 1 3 3&｜S: 2 4
+  hat16C: {
+    unit: 16,
+    steps:
+      "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat " +
+      "hihat+kick hihat hihat+kick hihat hihat+snare hihat hihat hihat",
+    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+  },
+  // hi-hat 與鬼音交替（第 4 拍沒有 hi-hat）。K: 1 2 3 4｜S: 4｜鬼音 S: 每拍的 e a
+  hat16D: {
+    unit: 16,
+    steps:
+      "hihat+kick (snare) hihat (snare) hihat+kick (snare) hihat (snare) " +
+      "hihat+kick (snare) hihat (snare) kick+snare (snare) hihat (snare)",
+    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
   },
 };
 
 export const FILLS = {
-  // 前 2 拍繼續打 groove。K: 3｜S: 3l 4 4t 4l｜P: 4 → 下一段第 1 拍 crash
-  shuffleHalfBar: {
+  // ─── 過門 1 拍：前面由 groove 繼續打 ───
+  // 前 3 拍繼續打 groove。S: 4 4e 4&
+  fill1A: {
+    unit: 16,
+    steps: "rest/2. snare snare snare/8",
+  },
+  // 前 3 拍繼續打 groove。S: 4 4e 4a｜T1: 4&
+  fill1B: {
+    unit: 16,
+    steps: "rest/2. snare snare tom1 snare",
+  },
+  // 前 3 拍繼續打 groove。S: 4｜T1: 4e｜F: 4& 4a
+  fill1C: {
+    unit: 16,
+    steps: "rest/2. snare tom1 floor floor",
+  },
+  // ─── 過門 2 拍：前面由 groove 繼續打 ───
+  // 前 2 拍繼續打 groove。K: 3 4｜S: 3 3e 3& 4｜F: 4e 4&
+  fill2A: {
+    unit: 16,
+    steps: "rest/2 kick+snare snare snare/8 kick+snare floor floor/8",
+  },
+  // 前 2 拍繼續打 groove。第 3 拍開鈸+K，3e 踏鈸收｜T2: 4 4e｜F: 4& 4a
+  fill2B: {
+    unit: 16,
+    steps: "rest/2 hihat_open+kick pedal/8. tom2 tom2 floor floor",
+  },
+  // 前 2 拍繼續打 groove。第 3 拍開鈸｜T1: 3& 3a｜鬼音 S: 4 4a｜F: 4e 4&
+  fill2C: {
+    unit: 16,
+    steps: "rest/2 hihat_open/8 tom1 tom1 (snare) floor floor (snare)",
+  },
+  // 前 2 拍繼續打 groove。8 分三連 S: 3 3t 3l｜T2: 4 4t｜S: 4l
+  fill2D: {
     unit: "8t",
-    feel: "same",
+    steps: "rest/2 snare ~snare ~snare tom2 ~tom2 ~snare",
+  },
+  // 前 2 拍繼續打 groove。8 分三連 ride: 3 3t 3l｜第 4 拍 ride bell
+  fill2E: {
+    unit: "8t",
+    steps: "rest/2 ride ~ride ~ride ride_bell/4",
+  },
+  // 前 2 拍繼續打 groove。K: 3 4｜S: 3 3e｜T1: 3& 3a｜T2: 4 4e｜F: 4& 4a
+  fill2F: {
+    unit: 16,
+    steps: "rest/2 kick+snare snare tom1 tom1 kick+tom2 tom2 floor floor",
+  },
+  // 前 2 拍繼續打 groove。K: 3｜S: 3 3a｜T1: 3e｜T2: 3&｜第 4 拍 crash+K+F
+  fill2G: {
+    unit: 16,
+    steps: "rest/2 kick+snare tom1 tom2 snare crash+kick+floor/4",
+  },
+  // shuffle 用（ride 三連、自動音）。前 2 拍繼續打 groove。K: 3｜S: 3l 4 4t 4l｜P: 4 → 下一段第 1 拍 crash
+  fill2H: {
+    unit: "8t",
     steps: "rest/2 ride+kick/4t ~snare snare+pedal ~snare ~snare",
   },
-  // 第 1 拍繼續打 groove。S: 2l 3 3t 3l｜第 4 拍 crash+kick+pedal（已有 crash，不用 land）
-  shuffleCrash: {
+
+  // ─── 過門 3 拍：前面由 groove 繼續打 ───
+  // 第 1 拍繼續打 groove。S+F: 2 2& 3 3&｜S: 4 4e 4& 4a
+  fill3A: {
+    unit: 16,
+    steps:
+      "rest/4 snare+floor/8 snare+floor/8 snare+floor/8 snare+floor/8 snare snare snare snare",
+  },
+  // 第 1 拍繼續打 groove。第 2 拍 crash+S、2& hi-hat、2a S｜T1+K: 3｜S: 3e 3& 3a｜K+S: 4｜S: 4e｜F: 4&
+  fill3B: {
+    unit: 16,
+    steps:
+      "rest/4 crash+snare/8 hihat snare tom1+kick snare snare snare kick+snare snare floor/8",
+  },
+  // 前 1 拍半繼續打 groove。K: 2& 2a｜6 連音 S: 第 3 拍前 5 下｜T1: 第 3 拍最後 1 下、第 4 拍前 3 下｜T2、F、F: 第 4 拍後 3 下
+  fill3C: {
+    unit: 16,
+    steps:
+      "rest/4 rest/8 kick kick snare/16t snare/16t snare/16t snare/16t snare/16t tom1/16t tom1/16t tom1/16t tom1/16t tom2/16t floor/16t floor/16t",
+  },
+  // shuffle 用（ride 三連、自動音）。第 1 拍繼續打 groove。S: 2l 3 3t 3l｜第 4 拍 crash+kick+pedal（已有 crash，下一段第一擊不再加）
+  fill3D: {
     unit: "8t",
-    feel: "same",
     steps: "rest/4 ride+pedal/4t ~snare snare ~snare ~snare crash+kick+pedal/4",
+  },
+
+  // ─── 過門 4 拍：整小節都是過門 ───
+  // 整小節。crash+K: 1 1a 2& 3（3 為四分）
+  fill4A: {
+    unit: 8,
+    steps: "crash+kick/8. crash+kick/16 rest crash+kick crash+kick/4 rest/4",
+  },
+  // 整小節。第 1 拍 crash+K、第 2 拍開鈸（四分）｜S: 3 3e 3a 4e 4a｜P: 3
+  fill4B: {
+    unit: 16,
+    steps:
+      "crash+kick/4 hihat_open/4 snare+pedal snare rest snare rest snare rest snare",
+  },
+  // 整小節。K: 每拍的 & a 與 1 1e｜crash: 1 1e｜T1: 2 2e｜ride bell: 3 3e｜F: 4 4e
+  fill4C: {
+    unit: 16,
+    steps:
+      "splash+kick splash+kick kick kick tom1 tom1 kick kick ride_bell ride_bell kick kick floor floor kick kick",
+  },
+  // 整小節。第 1 拍 crash+K+S、T1: 1& 1a｜T2: 2e 2&｜F flam: 3 3&｜S: 4 4e 4& 4a
+  fill4D: {
+    unit: 16,
+    steps:
+      "crash+kick+snare/8 tom1 tom1 rest tom2 tom2/8 {floor}/8 {floor}/8 snare snare snare snare",
   },
 };

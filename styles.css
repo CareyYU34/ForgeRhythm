@@ -1673,6 +1673,50 @@ body {
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* =========================
+   節奏循環 BPM（自由模式）
+========================= */
+.groove-bpm {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 3;
+  padding: 8px 14px 10px;
+  border-radius: 12px;
+  background: rgba(18, 24, 31, 0.72);
+  pointer-events: none;
+}
+
+/* 歌曲／分部模式 HUD 顯示中 → 讓位 */
+.song-hud:not(.is-hidden) ~ .groove-bpm {
+  display: none;
+}
+
+.groove-bpm-num {
+  font-family: var(--song-mono);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.groove-bpm-unit {
+  margin-left: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.groove-bpm-sub {
+  margin-top: 4px;
+  font-family: var(--song-mono);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.groove-bpm.is-fill .groove-bpm-num {
+  color: var(--song-kick);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .song-countdown-num,
   .song-note,
