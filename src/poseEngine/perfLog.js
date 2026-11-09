@@ -210,6 +210,18 @@ export const perfLog = {
   },
 
   /**
+   * 節奏循環的速度／選 groove 紀錄（grooveMode/freePlayRouter 呼叫）。
+   * 派發期內 → 掛到當前這一擊的 terminator.tempo（陣列，一擊可能有好幾筆）；
+   * 派發期外（例如預覽時閒置歸零）→ 記成一筆 events（type "tempo"）。
+   * @param {{ text: string }} entry  text = console 那一行，其餘欄位為結構化數值
+   */
+  tempo(entry) {
+    if (!running || !current) return;
+    if (dispatchRec) (dispatchRec.tempo ??= []).push(entry);
+    else this.event("tempo", entry);
+  },
+
+  /**
    * 每一擊的各段延遲（ms）。
    *   cam    相機拍到 → 程式拿到（相機管線 + 等 rAF）
    *   det    推論耗時

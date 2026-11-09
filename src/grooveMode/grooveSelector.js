@@ -1,96 +1,122 @@
 /**
  * grooveMode/grooveSelector.js
  *
- * 職責：換段時，依使用者的速度從候選 groove 裡挑下一個。純計算，沒有時鐘。
+ * 職責：換段時，從候選 groove 裡挑下一個。純計算，沒有時鐘。
  * 候選已由上一層去掉 special（特殊節奏由 freePlayRouter 的計時器決定，不經過這裡）。
+ *
+ * ═══ 原則：手速就是速度 ═══
+ *
+ * BPM 跟著使用者的手走：手快 BPM 就上、手慢就下。selector 不把 BPM 拉回某個基準，
+ * 只在 BPM 超出 [BPM_MIN, BPM_MAX] 時換密度，把它帶回範圍內。
+ *
+ * ⚠ 舊做法（挑「換算 BPM 最接近基點」的 groove）會在手變快時換更密的 groove 抵銷掉，
+ *   實測「手快了 BPM 卻不上去」，耳朵聽到的速度感也一樣 —— 不要改回去。
  *
  * ═══ 規則 ═══
  *
- * 用 fill 期間的手速 H（每秒幾擊）套進每個候選 groove 的密度 d（每拍幾擊），
- * 算出「接這個 groove 會是多少 BPM」：
+ * 手速不變、換成密度 d 的 groove，BPM 會變成
  *
- *     implied = 60 × H ÷ d
+ *     implied = 目前 BPM × 目前密度 ÷ d
  *
- * 誤差 = |ln(implied ÷ 基點 BPM)|（用對數比，快一倍與慢一半的誤差一樣大）。
- * 挑誤差最小的；密度相同的 groove 誤差相同 → 在其中隨機，保留變化。
- * 同密度有別的 groove 時不挑目前這個，避免連續好幾段都一樣。
- *
- * ═══ 遲滯 ═══
- *
- * 候選中若有「與目前 groove 同密度」的，要換到別的密度，誤差必須好過它
- * 超過 MARGIN 才換 —— 避免速度在兩檔中間時來回跳。
- *
- * ⚠ 遲滯只在「留下來本身還可以」（同密度的誤差 < STAY_OK）時生效。
- *   留下來已經偏很多時，只要有更好的就換。
+ *   · 目前 BPM 在範圍內 → 合格 = 同密度的其他 groove（BPM 不跳，只換花樣）；
+ *     同密度沒有別的（funkA、funkB 這類單獨一檔）→ 密度相差 TOLERANCE 內、且 implied 也在範圍內的
+ *     ⚠ 不能一律開放鄰檔：每次換段都可能往鄰檔移一格，加上 age 偏好沒去過的檔，
+ *       密度會隨機漂移，每移一格 BPM 跳 10% 左右。實測手速 ×2.2 時 BPM 只 90 → 150，
+ *       又變回「手快了 BPM 上不太去」。
+ *   · 超出範圍 → 合格 = implied 在範圍內、且與範圍中心（幾何平均）誤差不超過
+ *     「最小誤差 + TOLERANCE」的；全部都超出範圍則挑最接近中心的那一檔
+ *     （回到中心附近，不會貼著邊界來回換）
+ *   從合格的裡面依「多久沒出現」加權隨機挑（pickStale）。
  *
  * ═══ 量不到速度 ═══
  *
- * 基點或手速為 null（剛開始、fill 太短、沒有過門）→ 在目前同密度的候選中隨機
- * （密度不變，使用者照原本的手速打就對得上）；沒有同密度的（例如從 special 回來）→ 全部隨機。
+ * 目前 BPM 為 null（剛開始、間隔不足一小節）→ 在目前同密度的候選中挑
+ * （密度不變，使用者照原本的手速打就對得上）；沒有同密度的（例如從 special 回來）→ 全部候選。
+ *
+ * ═══ 多久沒出現（age）═══
+ *
+ * age = 隔了幾次沒被選到（引擎計算；從沒出現過的最大，目前這個 = 0）。
+ * 權重 = age²：越久沒出現越容易被選到，但不是固定順序，仍保留隨機。
+ * 目前這個權重 0 → 有別的選擇時不會連續兩段一樣。
  */
 
-/** 換到別的密度，誤差要好過留下來多少（對數）。ln(1.15) ≈ 換過去要好 15% 以上 */
-export const MARGIN = Math.log(1.15);
+/** BPM 的舒適範圍：超出才換密度 */
+export const BPM_MIN = 60;
+export const BPM_MAX = 180;
 
-/** 留在同密度的誤差小於這個值，才套用遲滯 */
-export const STAY_OK = Math.log(1.3);
+/**
+ * 密度相差在這個倍數內算「相近」（對數）。
+ * ln(1.13)：目前相鄰兩檔密度最多差 12.5%（2.0 → 2.25），13% 讓每一檔都能與鄰檔輪替；
+ * hat16（4.0）與下一檔差 23%，要 BPM 超出範圍才會換過去或換出來。
+ */
+export const TOLERANCE = Math.log(1.13);
 
 /** 密度相差在這個比例內視為同一檔 */
 const SAME_DENSITY = Math.log(1.05);
 
-const pickRandom = (xs) => xs[Math.floor(Math.random() * xs.length)];
-const sameDensity = (a, b) => Math.abs(Math.log(a / b)) < SAME_DENSITY;
+/** 範圍中心（幾何平均）：超出範圍時往這裡拉 */
+const BPM_CENTER = Math.sqrt(BPM_MIN * BPM_MAX);
 
-/** 從 xs 隨機挑一個；有其他選擇時不挑 currentId */
-function pickOther(xs, currentId) {
-  const others = xs.filter((c) => c.id !== currentId);
-  return pickRandom(others.length ? others : xs);
+const densityGap = (a, b) => Math.abs(Math.log(a / b));
+const inRange = (bpm) => bpm >= BPM_MIN && bpm <= BPM_MAX;
+
+/**
+ * 依 age 加權隨機挑一個（權重 age²，見上方說明）。
+ * 全部權重都是 0（只剩目前這個）→ 平均隨機。
+ * @param {Array<{age: number}>} xs
+ */
+export function pickStale(xs) {
+  const weights = xs.map((x) => x.age * x.age);
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (!(total > 0)) return xs[Math.floor(Math.random() * xs.length)];
+  let r = Math.random() * total;
+  for (let i = 0; i < xs.length; i++) {
+    r -= weights[i];
+    if (r < 0) return xs[i];
+  }
+  return xs[xs.length - 1];
 }
 
 /**
  * @param {Object}   p
- * @param {Array<{id: string, density: number}>} p.candidates  可以換過去的 groove（不含 special）
- * @param {string}   p.currentId       目前（這段）的 groove
+ * @param {Array<{id: string, density: number, age: number}>} p.candidates
+ *                                    可以換過去的 groove（不含 special），age 見上方說明
  * @param {number}   p.currentDensity  目前 groove 的密度
- * @param {?number}  p.baselineBpm     基點 BPM
- * @param {?number}  p.hitRate         fill 期間手速（每秒幾擊）
+ * @param {?number}  p.currentBpm      目前 BPM（這段 groove 結尾一小節）
  * @returns {{ id: string, impliedBpm: ?number, reason: string }}
  */
-export function selectNextGroove({ candidates, currentId, currentDensity, baselineBpm, hitRate }) {
+export function selectNextGroove({ candidates, currentDensity, currentBpm }) {
   if (candidates.length === 1) {
     return { id: candidates[0].id, impliedBpm: null, reason: "只有一個候選" };
   }
-  if (!baselineBpm || !hitRate) {
-    const same = candidates.filter((c) => sameDensity(c.density, currentDensity));
-    const id = pickOther(same.length ? same : candidates, currentId).id;
-    return { id, impliedBpm: null, reason: same.length ? "量不到速度，同密度隨機" : "量不到速度，隨機" };
+  if (!currentBpm) {
+    const same = candidates.filter((c) => densityGap(c.density, currentDensity) < SAME_DENSITY);
+    const { id } = pickStale(same.length ? same : candidates);
+    return { id, impliedBpm: null, reason: same.length ? "量不到速度，同密度" : "量不到速度，全部候選" };
   }
 
   const scored = candidates.map((c) => {
-    const impliedBpm = (60 * hitRate) / c.density;
-    return { ...c, impliedBpm, err: Math.abs(Math.log(impliedBpm / baselineBpm)) };
+    const impliedBpm = (currentBpm * currentDensity) / c.density;
+    return { ...c, impliedBpm, err: Math.abs(Math.log(impliedBpm / BPM_CENTER)) };
   });
-  const bestOf = (xs) => xs.reduce((a, b) => (b.err < a.err ? b : a));
 
-  const best = bestOf(scored);
-  const stay = scored.filter((c) => sameDensity(c.density, currentDensity));
-
-  let target = best;
-  let reason = "最接近基點";
-  if (stay.length && !sameDensity(best.density, currentDensity)) {
-    const bestStay = bestOf(stay);
-    if (bestStay.err < STAY_OK && best.err + MARGIN >= bestStay.err) {
-      target = bestStay;
-      reason = "差距不夠大，維持同密度";
-    } else {
-      reason = best.density > currentDensity ? "變快 → 換更密" : "變慢 → 換更疏";
+  let pool = [];
+  let reason = "範圍內，同密度";
+  if (inRange(currentBpm)) {
+    pool = scored.filter((c) => densityGap(c.density, currentDensity) < SAME_DENSITY && c.age > 0);
+    if (!pool.length) {
+      pool = scored.filter((c) => densityGap(c.density, currentDensity) <= TOLERANCE && inRange(c.impliedBpm));
+      reason = "範圍內，同密度只有自己 → 相近密度";
     }
   }
+  if (!pool.length) {
+    const ok = scored.filter((c) => inRange(c.impliedBpm));
+    const base = ok.length ? ok : scored;
+    const bestErr = Math.min(...base.map((c) => c.err));
+    pool = base.filter((c) => c.err <= bestErr + TOLERANCE);
+    reason = currentBpm > BPM_MAX ? "太快 → 換更密" : currentBpm < BPM_MIN ? "太慢 → 換更疏" : "相近密度都超出範圍";
+  }
 
-  // 與 target 同密度的候選隨機挑一個
-  const picked = pickOther(
-    scored.filter((c) => sameDensity(c.density, target.density)),
-    currentId,
-  );
+  const picked = pickStale(pool);
   return { id: picked.id, impliedBpm: picked.impliedBpm, reason };
 }

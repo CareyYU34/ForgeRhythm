@@ -15,7 +15,7 @@
  *      fill 是空陣列 → 沒有過門，輪數走完直接走規則 3 換 groove。
  *   3. 過門走完 → 換下一個 groove，輪數歸零。候選 = 整張 GROOVES（附 special 標記），
  *      上一層有傳 pickNext 就交給它挑（計時器與速度，見 freePlayRouter／grooveSelector），
- *      否則在非 special 中隨機。
+ *      否則在非 special 中依 age 挑（規則 8）。
  *   4. reset() → 回到 START_GROOVE 第一格（第一擊不加 crash）。
  *   5. 自動音（譜上 "~" 開頭）不用打：一擊會連同後面緊接的自動音一起走完，
  *      回傳自動音「距離這一擊幾拍」，由上一層換算成毫秒排程播放。
@@ -28,6 +28,10 @@
  *        · 這一擊有 crash（換段加的或譜上寫的）—— crash 取代了 hihat，等於重新起頭
  *        · 這一段完全沒有能關鈸的音（hihat／pedal）—— 否則上一段結尾的開鈸會一路響過整段
  *          （例如 disco 結尾的 hihat_open 響進過門）
+ *   8. 越久沒出現的越優先：記錄每個 groove／fill 上次出現在第幾次挑選，
+ *      age = 隔了幾次沒被選到（從沒出現過的最大，目前這個 = 0）。
+ *      groove 的 age 附在候選上交給 pickNext；過門在 groove 的 fill 清單中依 age 挑。
+ *      加權方式見 grooveSelector.pickStale。reset() 不清除（閒置後重打也延續輪替）。
  *
  * ═══ 預覽（peek）═══
  *
@@ -46,6 +50,7 @@
  */
 
 import { SOUNDS, START_GROOVE, LOOPS, GROOVES, FILLS } from "./grooveTable.js";
+import { pickStale } from "./grooveSelector.js";
 
 /** 合法的「幾分音符」 */
 const NOTE_VALUES = [1, 2, 4, 8, 16, 32];
@@ -288,6 +293,22 @@ export function createGrooveEngine() {
     special: !!GROOVES[id].special,
   }));
   const regularIds = candidates.filter((c) => !c.special).map((c) => c.id);
+  /**
+   * 規則 8：上次出現在第幾次挑選（-1 = 從沒出現過，age 會比任何出現過的都大）。
+   * age = seq - last - 1：上一次被選到的 = 0（seq 在記錄時已 +1，要扣回來）
+   */
+  const grooveLast = Object.fromEntries(Object.keys(GROOVES).map((id) => [id, -1]));
+  const fillLast = Object.fromEntries(Object.keys(FILLS).map((id) => [id, -1]));
+  let grooveSeq = 0, fillSeq = 0;
+  const grooveAge = (id) => grooveSeq - grooveLast[id] - 1;
+  /** 從 fill 清單依 age 挑一個並記錄；空清單 → undefined（沒有過門） */
+  function pickFill(list) {
+    const fills = (Array.isArray(list) ? list : [list]).filter((f) => FILLS[f]);
+    if (!fills.length) return undefined;
+    const { id } = pickStale(fills.map((id) => ({ id, age: fillSeq - fillLast[id] - 1 })));
+    fillLast[id] = fillSeq++;
+    return id;
+  }
   /** 這一段有沒有能關鈸的音（規則 7）；過門只看它自己的音，不含開頭由 groove 打的部分 */
   const grooveCloses = {};
   for (const [id, steps] of Object.entries(grooveSteps)) grooveCloses[id] = anyClosesHat(steps);
@@ -308,8 +329,9 @@ export function createGrooveEngine() {
    */
   function enterGroove(id) {
     grooveId = id;
+    grooveLast[id] = grooveSeq++;
     loopCount = 0;
-    plannedFill = pick(GROOVES[id].fill);
+    plannedFill = pickFill(GROOVES[id].fill);
     const { steps = [], leadingRestBeats = 0 } = fillSteps[plannedFill] ?? {};
     plannedFillSteps = [...grooveHead(grooveSteps[id], leadingRestBeats), ...steps];
     // ⚠ 三連的拍數加總有浮點誤差，4.0000001 拍不能算成佔 2 輪
@@ -337,8 +359,8 @@ export function createGrooveEngine() {
    *   closeHat 這一擊要截斷還在響的開鈸（規則 7）
    *
    * @param {Function} [pickNext]  換段時挑下一個 groove：
-   *   pickNext({ candidates: [{ id, density, special }], currentId, currentDensity }) → groove id
-   *   沒傳則在非 special 中隨機。
+   *   pickNext({ candidates: [{ id, density, special, age }], currentId, currentDensity }) → groove id
+   *   沒傳則在非 special 中依 age 挑（規則 8）。
    */
   function hit(pickNext) {
     const steps = fillId !== null ? plannedFillSteps : grooveSteps[grooveId];
@@ -361,8 +383,12 @@ export function createGrooveEngine() {
       newSegment = true;
       enterGroove(
         pickNext
-          ? pickNext({ candidates, currentId: grooveId, currentDensity: density[grooveId] })
-          : pick(regularIds),
+          ? pickNext({
+              candidates: candidates.map((c) => ({ ...c, age: grooveAge(c.id) })),
+              currentId: grooveId,
+              currentDensity: density[grooveId],
+            })
+          : pickStale(regularIds.map((id) => ({ id, age: grooveAge(id) }))).id,
       );
     };
 

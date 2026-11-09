@@ -20,77 +20,68 @@
  *
  * ═══ 量法 ═══
  *
- * 基點 BPM ＝ 60000 × Σ拍數 ÷ Σ毫秒，以「整段 groove」計（跳過開頭 WARMUP 個間隔）。
- *   不逐擊算：這個模式下節奏的快慢是使用者決定的，平均手速打切分 groove 時，
- *   單擊的 BPM 會亂跳，整段的總拍數 ÷ 總時間才穩，也順便平均掉 30fps 的量化誤差。
- *   每段 groove 結束（進入 fill）時更新一次；太短（間隔數不足）沿用上一次。
+ * 一小節的 BPM ＝ 60000 × Σ拍數 ÷ Σ毫秒，取 groove 最近累積滿 BEAT_LIVE_BEATS 拍的間隔
+ *   （見下方「每拍毫秒」為什麼不能逐擊算）。
  *
- * ⚠ 基點只接受「慢慢漂移」（不能省）：新量到的值與舊基點相差 ≤ DRIFT 才採用，
- *   否則保留舊基點。量到的 BPM 是「依譜解讀」的結果 ——
- *     · 使用者在 groove 中途手速加倍，8 分的譜會量出兩倍 BPM；
- *     · 往目標密度移動時，中間那一檔 groove 本來就對不準（例如 213 BPM）。
- *   這些若被當成新基點，加速會被吸收掉，selector 就永遠換不到該換的密度。
- *   第一次（沒有舊基點）→ 太快的往下折到 FOLD_MAX 以下，
- *   例如 8 分打到 240 → 120（＝ 當成 16 分解讀）。
- *   只往下折：慢的不往上折，因為沒有比 8 分更疏的 groove 能對應。
+ * 基點 BPM ＝ 這段 groove 結束（進入 fill）時「最後一小節」的 BPM；不足一小節沿用上一次。
+ *   過門中顯示它、自動音也用它（過門的手速不照譜，不拿來換算）。
  *
- * fill 手速 ＝ 每秒幾擊，不看 fill 的譜（下一個 groove 要用的是使用者「手」的速度，
- *   再由上一層依候選 groove 的密度換算成 BPM）。
+ * ⚠ 基點直接跟著手走，沒有「只接受慢慢漂移」也沒有「第一次太快折半」（舊做法）：
+ *   那兩條是為了讓 BPM 穩在原處，實測「手快了 BPM 卻不上去」，第一次量到 163 被折成 81。
+ *   現在的原則是手速就是速度（見 grooveSelector），BPM 太快／太慢由 selector 換密度處理。
  *
- * 離群值：每段以「每拍毫秒」的中位數為準，超出 [÷OUTLIER, ×OUTLIER] 的間隔不計
+ * fill 手速 ＝ 每秒幾擊，不看 fill 的譜（只給 log 參考）。
+ *
+ * 離群值（只用在 fill 手速）：以中位數為準，超出 [÷OUTLIER, ×OUTLIER] 的間隔不計
  *   （中途停頓等）。
  *
  * ═══ 每拍毫秒（getBeatMs）═══
  *
- * 給自動音排程用（譜上的拍數 → 毫秒），要跟得上使用者「現在」的速度：
- * 這段 groove 已有 BEAT_LIVE_MIN 個間隔 → 取最近 BEAT_LIVE_N 個的中位數；
+ * 給自動音排程與畫面顯示用（譜上的拍數 → 毫秒），要跟得上使用者「現在」的速度：
+ * 這段 groove 最近的間隔累積滿 BEAT_LIVE_BEATS 拍 → 這些間隔的 Σ毫秒 ÷ Σ拍數；
  * 否則（剛換段、過門中）退回基點。過門的手速不照譜，不拿來換算。
+ *
+ * ⚠ 不能用「最近幾個間隔的中位數」（舊做法，實測會跳 30–50 BPM）：
+ *   · 使用者多半用固定手速打，不照譜上的 8 分／16 分變化間隔 ——
+ *     同樣 230ms，落在 0.5 拍算 130 BPM、落在 0.25 拍算 65 BPM，逐擊跟著譜跳；
+ *   · 左右手間隔不對稱（200／267ms 交替）加上 30fps 量化，同為 8 分也差 ±15%；
+ *   · 偵測漏一擊 → 間隔加倍。
+ *   累積滿一小節再算總和比：8 分／16 分的比例固定、左右手互相抵銷、漏一擊只佔一小部分。
+ *
+ * ═══ 除錯 ═══
+ *
+ * hit() 回傳剛結算的間隔（含基點有沒有更新、為什麼），getBeatInfo() 回傳
+ * 每拍毫秒的來源與取樣 —— 由 freePlayRouter 印成 [tempo] log，本模組不印。
  */
 
 /** 兩擊相隔小於這個值視為同一擊（雙手同時打）（ms） */
 export const MERGE_MS = 50;
 
-/** 每段 groove 開頭不計入基點的間隔數（起手通常不穩） */
-const WARMUP = 2;
-
-/** 基點至少要有幾個有效間隔才更新 */
-const MIN_BASELINE_INTERVALS = 4;
-
-/**
- * 離群倍率：每拍毫秒偏離中位數超過這個倍數就不計。
- * ⚠ 不能小於 2 太多：使用者用平均手速打 8 分／16 分混合的譜時，
- *   8 分那幾擊的「每拍毫秒」本來就是中位數的一半，2 倍會被誤刪而讓基點偏慢。
- *   只擋真正的停頓。
- */
+/** 離群倍率（fill 手速）：間隔偏離中位數超過這個倍數就不計。只擋真正的停頓 */
 const OUTLIER = 3;
 
-/** 新基點與舊基點相差在這個倍數內才採用（慢慢漂移） */
-const DRIFT = 1.2;
-
-/** getBeatMs：這段 groove 至少要有幾個間隔才用即時值、取最近幾個的中位數 */
-const BEAT_LIVE_MIN = 2;
-const BEAT_LIVE_N = 3;
-
-/** 第一次取基點時，超過這個 BPM 就 ÷2 直到低於它 */
-const FOLD_MAX = 140;
-
-/** 第一次：太快的往下折 */
-function fold(bpm) {
-  while (bpm >= FOLD_MAX) bpm /= 2;
-  return bpm;
-}
-
-/** 新的基點：第一次太快的往下折；之後只接受慢慢漂移 */
-function nextBaseline(measured, prev) {
-  if (prev === null) return fold(measured);
-  return Math.abs(Math.log(measured / prev)) <= Math.log(DRIFT) ? measured : prev;
-}
+/** getBeatMs：即時值取這段 groove 最近累積滿幾拍的間隔（一小節） */
+const BEAT_LIVE_BEATS = 4;
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
+
+/**
+ * 最近累積滿 BEAT_LIVE_BEATS 拍的間隔：{ beatMs, n }；不足一小節回傳 null
+ * @param {Array<{ms: number, beats: number}>} intervals
+ */
+function lastBar(intervals) {
+  let beats = 0, ms = 0, n = 0;
+  for (let i = intervals.length - 1; i >= 0 && beats < BEAT_LIVE_BEATS - 1e-6; i--) {
+    beats += intervals[i].beats;
+    ms += intervals[i].ms;
+    n++;
+  }
+  return beats >= BEAT_LIVE_BEATS - 1e-6 ? { beatMs: ms / beats, n } : null;
+}
 
 /** 去掉離群值後的 BPM；間隔不足回傳 null */
 function bpmOf(intervals, minCount) {
@@ -125,15 +116,24 @@ export function createTempoTracker() {
     return lastMs !== null && nowMs - lastMs < MERGE_MS;
   }
 
-  /** ① 結算「上一擊 → 這一擊」的間隔 */
+  /**
+   * ① 結算「上一擊 → 這一擊」的間隔
+   * @returns {?{ ms, beats, inFill, baseline?: { measured, prev, next } }}
+   *   剛結算的間隔（除錯用）；第一擊回傳 null。baseline = 這一擊觸發了基點更新
+   */
   function hit(nowMs) {
+    let settled = null;
     if (lastMs !== null && pending) {
       const iv = { ms: nowMs - lastMs, beats: pending.beats };
+      settled = { ...iv, inFill: pending.inFill };
       if (pending.inFill) {
         if (!fillIntervals.length) {
-          // groove → fill：這段 groove 結束，更新基點
-          const bpm = bpmOf(grooveIntervals.slice(WARMUP), MIN_BASELINE_INTERVALS);
-          if (bpm !== null) baselineBpm = nextBaseline(bpm, baselineBpm);
+          // groove → fill：這段 groove 結束，基點 = 最後一小節
+          const bar = lastBar(grooveIntervals);
+          const bpm = bar && 60000 / bar.beatMs;
+          const prev = baselineBpm;
+          if (bpm !== null) baselineBpm = bpm;
+          settled.baseline = { measured: bpm, prev, next: baselineBpm };
         }
         fillIntervals.push(iv);
       } else {
@@ -146,6 +146,7 @@ export function createTempoTracker() {
       }
     }
     lastMs = nowMs;
+    return settled;
   }
 
   /** ③ 記下這一擊的時值與段落，等下一擊來結算 */
@@ -153,17 +154,26 @@ export function createTempoTracker() {
     pending = { beats, inFill };
   }
 
-  /** 最近一段 groove 的基點 BPM；還量不到回傳 null */
+  /** 上一段 groove 最後一小節的 BPM；還量不到回傳 null */
   function getBaselineBpm() {
     return baselineBpm;
   }
 
+  /**
+   * 每拍毫秒與它的來源（除錯用；getBeatMs 只取 beatMs）
+   * @returns {{ beatMs: ?number, source: "live"|"baseline"|"none", samples: number }}
+   *   samples = 即時值用了幾個間隔
+   */
+  function getBeatInfo() {
+    const bar = fillIntervals.length ? null : lastBar(grooveIntervals);
+    if (bar) return { beatMs: bar.beatMs, source: "live", samples: bar.n };
+    if (baselineBpm) return { beatMs: 60000 / baselineBpm, source: "baseline", samples: 0 };
+    return { beatMs: null, source: "none", samples: 0 };
+  }
+
   /** 目前一拍幾毫秒（自動音排程用）；量不到回傳 null */
   function getBeatMs() {
-    if (!fillIntervals.length && grooveIntervals.length >= BEAT_LIVE_MIN) {
-      return median(grooveIntervals.slice(-BEAT_LIVE_N).map((iv) => iv.ms / iv.beats));
-    }
-    return baselineBpm ? 60000 / baselineBpm : null;
+    return getBeatInfo().beatMs;
   }
 
   /** 目前這段 fill 的手速（每秒幾擊）；fill 還沒開始或不足一個間隔回傳 null */
@@ -177,5 +187,5 @@ export function createTempoTracker() {
     return bpm === null ? null : bpm / 60;
   }
 
-  return { isDuplicate, hit, setStep, reset, getBaselineBpm, getBeatMs, getFillHitRate };
+  return { isDuplicate, hit, setStep, reset, getBaselineBpm, getBeatMs, getBeatInfo, getFillHitRate };
 }
