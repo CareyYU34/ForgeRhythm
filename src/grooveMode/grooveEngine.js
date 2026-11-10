@@ -7,11 +7,14 @@
  *
  *   1. 從 START_GROOVE 開始（陣列則隨機），打一下走一格。
  *   2. 一輪走完 → 輪數 +1；只剩過門佔的長度時 → 進入過門。
- *      輪數 = 整段的總輪數（含過門），從 LOOPS 隨機挑：4、一輪 4 拍、過門 4 拍 → 3 輪 + 過門 = 4 小節。
- *      過門佔幾輪由它的總拍數（含 rest）換算，所以一輪 2 拍的 groove 接 4 拍過門也對得齊。
- *      過門開頭的 rest 不是休止，而是「這段由 groove 繼續打」：groove 從第一格走滿
- *      rest 的拍數後，直接切到過門的第一個音（grooveHead）。
- *      這幾擊仍算 groove（inFill = false），基點照常量。
+ *      整段長度（含過門）從 LOOPS 隨機挑，單位是小節（BAR_BEATS 拍），換算成輪數（進位）：
+ *        一輪 4 拍：4 小節 = 4 輪，過門 4 拍 → 3 輪 + 過門。
+ *        一輪 8 拍（兩小節一輪）：3 或 4 小節都是 2 輪，過門 4 拍 → 1 輪 + 半輪 groove + 過門。
+ *      過門佔幾輪由它的總拍數（含 rest）換算（進位）。過門比佔掉的輪短時，
+ *      前面由 groove 補滿，過門落在這一輪的結尾（兩小節一輪：第一小節 groove、第二小節過門）。
+ *      過門開頭的 rest 同理，不是休止，而是「這段由 groove 繼續打」：groove 從第一格走滿
+ *      這些拍數後，直接切到過門的第一個音（grooveHead）。
+ *      這幾擊仍算 groove（inFill = false）。
  *      fill 是空陣列 → 沒有過門，輪數走完直接走規則 3 換 groove。
  *   3. 過門走完 → 換下一個 groove，輪數歸零。候選 = 整張 GROOVES（附 special 標記），
  *      上一層有傳 pickNext 就交給它挑（計時器與速度，見 freePlayRouter／grooveSelector），
@@ -51,6 +54,12 @@
 
 import { SOUNDS, START_GROOVE, LOOPS, GROOVES, FILLS } from "./grooveTable.js";
 import { pickStale } from "./grooveSelector.js";
+
+/** 一小節幾拍（LOOPS 的單位） */
+const BAR_BEATS = 4;
+
+/** LOOPS 的小節數 → 一輪 roundBeats 拍的 groove 要走幾輪（進位；三連的浮點誤差不進位） */
+const roundsFor = (bars, roundBeats) => Math.ceil((bars * BAR_BEATS) / roundBeats - 1e-6);
 
 /** 合法的「幾分音符」 */
 const NOTE_VALUES = [1, 2, 4, 8, 16, 32];
@@ -255,7 +264,7 @@ function validateTable() {
       const parsed = parseTokens(FILLS[f].steps, FILLS[f].unit);
       const fillBeats = sumBeats(parsed.steps) + parsed.leadingRestBeats;
       for (const n of asList(LOOPS)) {
-        if (fillBeats - n * totalBeats > 1e-6) warn(`${where}: LOOPS ${n} 比過門 "${f}" 短`);
+        if (fillBeats - roundsFor(n, totalBeats) * totalBeats > 1e-6) warn(`${where}: LOOPS ${n} 比過門 "${f}" 短`);
       }
     }
     if (!isInt(totalBeats)) warn(`${where}: 一輪 ${totalBeats} 拍，不是整數拍`);
@@ -332,11 +341,14 @@ export function createGrooveEngine() {
     grooveLast[id] = grooveSeq++;
     loopCount = 0;
     plannedFill = pickFill(GROOVES[id].fill);
+    const roundBeats = sumBeats(grooveSteps[id]);
     const { steps = [], leadingRestBeats = 0 } = fillSteps[plannedFill] ?? {};
-    plannedFillSteps = [...grooveHead(grooveSteps[id], leadingRestBeats), ...steps];
     // ⚠ 三連的拍數加總有浮點誤差，4.0000001 拍不能算成佔 2 輪
-    const fillRounds = Math.ceil((sumBeats(steps) + leadingRestBeats) / sumBeats(grooveSteps[id]) - 1e-6);
-    loopTarget = Math.max(0, pick(LOOPS) - fillRounds);
+    const fillRounds = Math.ceil((sumBeats(steps) + leadingRestBeats) / roundBeats - 1e-6);
+    // 過門佔掉的輪中，過門之前由 groove 打（含開頭的 rest；過門比一輪短時補滿，見規則 2）
+    const headBeats = fillRounds * roundBeats - sumBeats(steps);
+    plannedFillSteps = [...grooveHead(grooveSteps[id], headBeats), ...steps];
+    loopTarget = Math.max(0, roundsFor(pick(LOOPS), roundBeats) - fillRounds);
     fillId = loopTarget === 0 ? plannedFill : null; // 非 null = 正在過門
   }
 
@@ -405,7 +417,7 @@ export function createGrooveEngine() {
       if (fillId) {
         enterNext();
       } else if (++loopCount >= loopTarget) {
-        // 沒有過門 → 直接換 groove（量不到 fill 手速，selector 會在同密度中隨機）
+        // 沒有過門 → 直接換 groove
         if (plannedFill) fillId = plannedFill;
         else enterNext();
       }
@@ -444,9 +456,9 @@ export function createGrooveEngine() {
     return out.map((notes) => notes.map((n) => n.midi));
   }
 
-  /** 除錯用：目前位置 */
+  /** 目前位置（除錯用）與目前 groove 的密度（過門中 = 它所屬的 groove；上一層換算 BPM 用） */
   function getPosition() {
-    return { grooveId, fillId, step, loopCount, loopTarget };
+    return { grooveId, fillId, step, loopCount, loopTarget, density: density[grooveId] };
   }
 
   return { hit, peek, reset, getPosition };

@@ -51,26 +51,11 @@ const frameEl = document.querySelector(".camera-frame");
 const rackEl = document.getElementById("soundRack");
 const rackTitleEl = document.getElementById("soundRackTitle");
 
-/** 音色區只在「位置對應」打法時顯示（節奏循環不看部位音色）；BPM 顯示只在節奏循環時顯示 */
+/** 音色區只在「位置對應」打法時顯示（節奏循環不看部位音色） */
 function syncFreeStyleVisibility() {
   const hidden = state.freeStyle !== "mapping";
   rackEl.classList.toggle("is-hidden", hidden);
   rackTitleEl?.classList.toggle("is-hidden", hidden);
-  grooveBpmEl.classList.toggle("is-hidden", !hidden);
-}
-
-const grooveBpmEl = document.getElementById("grooveBpm");
-const grooveBpmNumEl = document.getElementById("grooveBpmNum");
-const grooveBpmSubEl = document.getElementById("grooveBpmSub");
-
-/** 節奏循環的速度顯示（freePlayRouter 每一擊／閒置歸零時通知） */
-function renderGrooveTempo({ bpm, baselineBpm, grooveId, inFill }) {
-  grooveBpmNumEl.textContent = bpm ? Math.round(bpm) : "--";
-  grooveBpmSubEl.textContent =
-    bpm === null
-      ? "開始打擊以量測速度"
-      : `基點 ${baselineBpm ? Math.round(baselineBpm) : "--"}｜${inFill ? "過門" : grooveId}`;
-  grooveBpmEl.classList.toggle("is-fill", inFill);
 }
 
 const settingsToggle = document.getElementById("settingsToggle");
@@ -291,7 +276,6 @@ const freePlayRouter = createFreePlayRouter({
   audio: audioEngine,
   playZone,
   getFreeStyle: () => state.freeStyle,
-  onTempo: renderGrooveTempo,
 });
 
 const hitRouter = createHitRouter({

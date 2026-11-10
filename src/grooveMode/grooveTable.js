@@ -36,6 +36,7 @@
  *        所以 "kick/16 rest/8" 與 "kick/8." 完全等價，照譜面習慣寫即可。
  *        ⚠ groove 開頭的 rest 併進一輪的最後一擊；過門開頭的 rest 由 groove 接手（見 FILLS 的 steps）。
  *        ⚠ 過門的總拍數（含 rest）決定它佔掉幾輪（見 LOOPS），要補滿小節；
+ *          比一輪短（兩小節一輪的 groove 接一小節過門）時，前面由 groove 補滿；
  *          過門結尾的 rest 就是用來補滿的，不會等待：fill 手速只看每秒幾擊，
  *          下一個 groove 在過門最後一擊當下就決定，照樣在使用者下一擊接上。
  *        ⚠ rest 不能跟音名用 "+" 連接。
@@ -60,7 +61,7 @@
  *   unit     最小單位是幾分音符（8、16，或三連 "8t"），也是 steps 時值的預設值
  *   special  （選填）true = 特殊節奏（shuffle 類）：不參與依速度挑選，
  *            只在計時器到時優先出現（見 freePlayRouter 的 SPECIAL_*）
- *   steps    一輪的內容；一輪的總拍數必須是整數拍
+ *   steps    一輪的內容；一輪的總拍數必須是整數拍（可以是兩小節，見 quarter 組）
  *   fill     過門 id；給陣列則隨機挑一個
  *            空陣列 [] = 沒有過門：輪數走完直接換下一個 groove，整段都是 groove
  *            ⚠ special 只配 shuffle 用的過門（fill2D／2E／2H／3D），一般 groove 不要用這幾個
@@ -69,6 +70,7 @@
  *
  * 下一個 groove 不在表裡指定：所有非 special 的 groove 都是候選，
  * 由 grooveSelector 依使用者的速度挑（密度由 steps 算出，不用標）。
+ * BPM ＝ 手速 ÷ 密度：密度越低，同樣的手速 BPM 越高（4 分組）；密度越高 BPM 越低（16 分組）。
  *
  * 換段的第一擊一律加 crash（取代 hihat／hihat_open／ride／ride_bell，其他音照響；
  * 上一段最後一擊已有 crash 則不加）。規則在 grooveEngine.js，譜上不用寫。
@@ -107,10 +109,10 @@ export const SOUNDS = {
 };
 
 /**
- * 每一段的總輪數，進入 groove 時從中隨機挑一個（所有 groove 共用）。
- * 過門（含開頭由 groove 打的部分）算在裡面：
+ * 每一段的總小節數（4 拍一小節），進入 groove 時從中隨機挑一個（所有 groove 共用）。
+ * 引擎換算成輪數（進位），過門（含開頭由 groove 打的部分）算在裡面：
  *   一輪 4 拍、過門 4 拍：3 = 2 輪 + 過門。
- *   一輪 2 拍、過門 4 拍：3 = 1 輪 + 過門（過門佔 2 輪的長度）。
+ *   一輪 8 拍（兩小節一輪）、過門 4 拍：3 或 4 都是 2 輪 = 1 輪 + 一小節 groove + 過門。
  * ⚠ 過門佔滿輪數時整段只有過門，groove 不會完整出現一輪（載入時會警告）。
  */
 export const LOOPS = [3, 4];
@@ -124,12 +126,10 @@ export const START_GROOVE = ["rock8A", "rock8B", "rock8C", "rock8D"];
  * 三連音：1 t l = 一拍裡的三個 8 分三連位置（1 trip let），例如「K: 3l」= 3 的 let。
  *   P = hi-hat 踏板（pedal）。
  *
- * ⚠ 三連全打的 groove 不要放進 START_GROOVE：tempoTracker 第一次取基點只會 ÷2 折，
- *   三連與直拍差 3:2，折不回來。（每拍 1 擊、其餘自動音的不受影響。）
- *
  * ═══ 三連 shuffle 組 ═══
  * 使用者每拍只打一下（拍點），拍內的三連音都是自動音 → 四個 groove 密度相同（每拍 1 擊）。
- * 標 special：計時器到時才出現（四個中隨機），不參與依速度挑選。
+ * 標 special：計時器到時、而且手放慢下來（音樂速度 80–150）才出現（四個中隨機），
+ * 不參與依速度挑選（見 freePlayRouter「特殊節奏計時器」）。
  */
 /*
  * ═══ 命名 ═══
@@ -180,7 +180,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat hihat+snare hihat " +
       "hihat+kick hihat hihat+snare hihat",
-    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill3A", "fill4A"],
   },
   // K: 1 1& 2& 3&｜S: 2 4
   rock8B: {
@@ -188,7 +188,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat+kick hihat+snare hihat+kick " +
       "hihat hihat+kick hihat+snare hihat",
-    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill3A", "fill4A"],
   },
   // K: 1 2& 3｜S: 2 4
   rock8C: {
@@ -196,7 +196,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat hihat+snare hihat+kick " +
       "hihat+kick hihat hihat+snare hihat",
-    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill3A", "fill4A"],
   },
   // K: 1 3 3&｜S: 2 4
   rock8D: {
@@ -204,7 +204,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat hihat+snare hihat " +
       "hihat+kick hihat+kick hihat+snare hihat",
-    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill4A"],
+    fill: ["fill1A", "fill1B", "fill1C", "fill2A", "fill2G", "fill3A", "fill4A"],
   },
 
   // ─── rock16：8 分 hi-hat，kick 帶一兩個 16 分 ───
@@ -248,7 +248,7 @@ export const GROOVES = {
     steps:
       "hihat+kick/8 hihat+kick kick hihat+snare/8 hihat kick " +
       "hihat kick hihat kick hihat+snare kick hihat+kick/8",
-    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4C", "fill4D"],
   },
   // K: 1 1a 2& 2a 3e 3& 4e｜S: 2 4
   funkB: {
@@ -256,7 +256,7 @@ export const GROOVES = {
     steps:
       "hihat+kick/8 hihat kick hihat+snare/8 hihat+kick kick " +
       "hihat kick hihat+kick/8 hihat+snare kick hihat/8",
-    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4C", "fill4D"],
   },
   // K: 1 1e 2& 2a 3 4&｜S: 2 4
   funkC: {
@@ -264,7 +264,7 @@ export const GROOVES = {
     steps:
       "hihat+kick/16 kick/16 hihat hihat+snare hihat+kick/16 kick/16 " +
       "hihat+kick hihat hihat+snare hihat+kick",
-    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4C", "fill4D"],
   },
   // K: 1 2& 2a 3e 3& 4a｜S: 2 4
   funkD: {
@@ -272,7 +272,7 @@ export const GROOVES = {
     steps:
       "hihat+kick/8 hihat/8 hihat+snare/8 hihat+kick kick " +
       "hihat kick hihat+kick/8 hihat+snare/8 hihat kick",
-    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4D"],
+    fill: ["fill2B", "fill2C", "fill3B", "fill3C", "fill4C", "fill4D"],
   },
 
   // ─── disco：四踩：kick 每拍都打，hi-hat（或開鈸）在反拍 ───
@@ -341,6 +341,42 @@ export const GROOVES = {
     fill: ["fill1B", "fill2C", "fill2F", "fill3A", "fill3B"],
   },
 
+  // ─── quarter：4 分為主，兩小節一輪（一輪 8 拍）───
+  // 快歌用的節奏：密度低（每拍 1.25–2 擊），同樣的手速音樂速度比 rock8 高。
+  // 手比平常快時由 selector 換進來（與 16 分組同屬快檔）。
+  // 註解的拍點以「｜」分兩小節。
+  // 沒有 hi-hat。K: 1 2& 3&｜1 3 3&　S: 2 4｜2 4
+  quarterA: {
+    unit: 8,
+    steps: "kick/4 snare kick/4 kick snare/4 " + "kick/4 snare/4 kick kick snare/4",
+    fill: ["fill2A", "fill2G", "fill3A", "fill4A"],
+  },
+  // 4 分 hi-hat。K: 1 3 4&｜1& 3 3&　S: 2 4｜2 2& 4
+  quarterB: {
+    unit: 8,
+    steps:
+      "hihat+kick/4 hihat+snare/4 hihat+kick/4 hihat+snare kick " +
+      "hihat kick hihat+snare snare hihat+kick kick hihat+snare/4",
+    fill: ["fill2A", "fill2G", "fill3A", "fill4A"],
+  },
+  // 4 分 hi-hat。K: 1 2 2&｜1 2 2& 3 4　S: 3 4&｜1& 3 4&
+  quarterC: {
+    unit: 8,
+    steps:
+      "hihat+kick/4 hihat+kick kick hihat+snare/4 hihat snare " +
+      "hihat+kick snare hihat+kick kick hihat+snare+kick/4 hihat+kick snare",
+    fill: ["fill2A", "fill2G", "fill3A", "fill4A"],
+  },
+  // hi-hat+snare 與 kick 交錯，每個 8 分都有音（密度 2，與 rock8 同一檔）。
+  // hi-hat+S: 1 2& 4｜1& 3 4　K: 1& 2 3 3& 4&｜1 2 2& 3& 4&
+  quarterD: {
+    unit: 8,
+    steps:
+      "hihat+snare kick kick hihat+snare kick kick hihat+snare kick " +
+      "kick hihat+snare kick kick hihat+snare kick hihat+snare kick",
+    fill: ["fill2A", "fill2G", "fill3A", "fill4A"],
+  },
+
   // ─── hat16：16 分 hi-hat ───
   // K: 1 3｜S: 2 4
   hat16A: {
@@ -348,7 +384,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat " +
       "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat",
-    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+    fill: ["fill1C", "fill2F", "fill3C", "fill4C", "fill4D"],
   },
   // K: 1 2a 3｜S: 2 4
   hat16B: {
@@ -356,7 +392,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat+kick " +
       "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat",
-    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+    fill: ["fill1C", "fill2F", "fill3C", "fill4C", "fill4D"],
   },
   // K: 1 3 3&｜S: 2 4
   hat16C: {
@@ -364,7 +400,7 @@ export const GROOVES = {
     steps:
       "hihat+kick hihat hihat hihat hihat+snare hihat hihat hihat " +
       "hihat+kick hihat hihat+kick hihat hihat+snare hihat hihat hihat",
-    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+    fill: ["fill1C", "fill2F", "fill3C", "fill4C", "fill4D"],
   },
   // hi-hat 與鬼音交替（第 4 拍沒有 hi-hat）。K: 1 2 3 4｜S: 4｜鬼音 S: 每拍的 e a
   hat16D: {
@@ -372,7 +408,7 @@ export const GROOVES = {
     steps:
       "hihat+kick (snare) hihat (snare) hihat+kick (snare) hihat (snare) " +
       "hihat+kick (snare) hihat (snare) kick+snare (snare) hihat (snare)",
-    fill: ["fill1C", "fill2F", "fill3A", "fill3C", "fill4D"],
+    fill: ["fill1C", "fill2F", "fill3C", "fill4C", "fill4D"],
   },
 };
 
@@ -436,11 +472,10 @@ export const FILLS = {
   },
 
   // ─── 過門 3 拍：前面由 groove 繼續打 ───
-  // 第 1 拍繼續打 groove。S+F: 2 2& 3 3&｜S: 4 4e 4& 4a
+  // 第 1 拍繼續打 groove。S: 2 3｜K: 2& 4 4&｜F: 3& 3a｜開鈸: 4&（下一段第 1 拍 crash 收）
   fill3A: {
     unit: 16,
-    steps:
-      "rest/4 snare+floor/8 snare+floor/8 snare+floor/8 snare+floor/8 snare snare snare snare",
+    steps: "rest/4 snare/8 kick/8 snare/8 floor floor kick/8 hihat_open+kick/8",
   },
   // 第 1 拍繼續打 groove。第 2 拍 crash+S、2& hi-hat、2a S｜T1+K: 3｜S: 3e 3& 3a｜K+S: 4｜S: 4e｜F: 4&
   fill3B: {
@@ -472,11 +507,11 @@ export const FILLS = {
     steps:
       "crash+kick/4 hihat_open/4 snare+pedal snare rest snare rest snare rest snare",
   },
-  // 整小節。K: 每拍的 & a 與 1 1e｜crash: 1 1e｜T1: 2 2e｜ride bell: 3 3e｜F: 4 4e
+  // 整小節 16 分。K: 1 2 3 4｜開鈸: 1 2& 3&｜其餘 16 分都是 S
   fill4C: {
     unit: 16,
     steps:
-      "splash+kick splash+kick kick kick tom1 tom1 kick kick ride_bell ride_bell kick kick floor floor kick kick",
+      "hihat_open+kick snare snare snare snare+kick snare hihat_open snare snare+kick snare hihat_open snare snare+kick snare snare snare",
   },
   // 整小節。第 1 拍 crash+K+S、T1: 1& 1a｜T2: 2e 2&｜F flam: 3 3&｜S: 4 4e 4& 4a
   fill4D: {

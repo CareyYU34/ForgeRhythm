@@ -1,67 +1,62 @@
 /**
  * grooveMode/tempoTracker.js
  *
- * 職責：量使用者的打擊速度 —— groove 期間的「基點 BPM」與 fill 期間的「手速」。
+ * 職責：量使用者的手速 —— 每秒打幾擊。只看打擊的時間點，不看譜。
  *
  * ═══ 只有這裡（與 freePlayRouter）知道時間 ═══
  *
- * grooveEngine 刻意不知道時間；本模組也不知道譜，只收「上一擊的時值（拍數）
- * 與它屬於 groove 還是 fill」。兩邊由 freePlayRouter 接起來。
+ * grooveEngine 刻意不知道時間；本模組也不知道譜（不知道 groove、fill、拍數、小節）。
+ * 手速換成 BPM（÷ 密度）、換成自動音的毫秒，都是 freePlayRouter 的事。
  *
- * ═══ 用法（每一擊，順序不能錯） ═══
+ * ═══ 用法（每一擊） ═══
  *
  *     if (tracker.isDuplicate(now)) return;   // 雙手同時打 → 併成一擊
- *     tracker.hit(now);                       // ① 先結算「上一擊 → 這一擊」的間隔
- *     const step = engine.hit(...);           // ② 引擎走一格（可能在這裡決定下一個 groove）
- *     tracker.setStep(step.beats, step.inFill); // ③ 記下這一擊的時值，等下一擊來結算
+ *     tracker.hit(now);                       // 記下「上一擊 → 這一擊」的間隔
+ *     tracker.getHitRate();                   // 目前每秒幾擊
+ *     tracker.getTypicalRate();               // 平常每秒幾擊（最近 30 秒中位數）
  *
- * ⚠ ① 必須在 ② 之前：fill 最後一擊的當下，引擎就要挑下一個 groove，
- *   那時 fill 的間隔必須已經記進來。
+ * ⚠ hit 必須在 engine.hit 之前：fill 最後一擊的當下，引擎就要挑下一個 groove，
+ *   那時這一擊的間隔必須已經算進手速。
  *
  * ═══ 量法 ═══
  *
- * 一小節的 BPM ＝ 60000 × Σ拍數 ÷ Σ毫秒，取 groove 最近累積滿 BEAT_LIVE_BEATS 拍的間隔
- *   （見下方「每拍毫秒」為什麼不能逐擊算）。
+ * 手速 ＝ 最近 RATE_WINDOW 個間隔的「擊數 ÷ 總時間」，groove、過門、換段都不分開算
+ * （手速就是手速，跟正在打哪一段無關）。
+ *   · 用總和比、不用中位數：左右手間隔不對稱（200／267ms 交替）會互相抵銷，
+ *     偵測漏一擊只佔一小部分。
+ *   · 離群值：以中位數為準，超出 [÷OUTLIER, ×OUTLIER] 的間隔不計（中途停頓等）。
  *
- * 基點 BPM ＝ 這段 groove 結束（進入 fill）時「最後一小節」的 BPM；不足一小節沿用上一次。
- *   過門中顯示它、自動音也用它（過門的手速不照譜，不拿來換算）。
+ * 平常的手速 ＝ 最近 TYPICAL_MS 內所有間隔的中位數換成每秒幾擊。
+ *   selector 拿「手速 ÷ 平常」決定給疏、中、密哪一檔（見 grooveSelector）。
+ *   ⚠ 30 秒不能拉長：太長的話玩的前面幾分鐘門檻都是固定的，動態化就失去意義。
+ *   閒置歸零（reset）時一起清掉，重新開始打就重新量。
  *
- * ⚠ 基點直接跟著手走，沒有「只接受慢慢漂移」也沒有「第一次太快折半」（舊做法）：
- *   那兩條是為了讓 BPM 穩在原處，實測「手快了 BPM 卻不上去」，第一次量到 163 被折成 81。
- *   現在的原則是手速就是速度（見 grooveSelector），BPM 太快／太慢由 selector 換密度處理。
- *
- * fill 手速 ＝ 每秒幾擊，不看 fill 的譜（只給 log 參考）。
- *
- * 離群值（只用在 fill 手速）：以中位數為準，超出 [÷OUTLIER, ×OUTLIER] 的間隔不計
- *   （中途停頓等）。
- *
- * ═══ 每拍毫秒（getBeatMs）═══
- *
- * 給自動音排程與畫面顯示用（譜上的拍數 → 毫秒），要跟得上使用者「現在」的速度：
- * 這段 groove 最近的間隔累積滿 BEAT_LIVE_BEATS 拍 → 這些間隔的 Σ毫秒 ÷ Σ拍數；
- * 否則（剛換段、過門中）退回基點。過門的手速不照譜，不拿來換算。
- *
- * ⚠ 不能用「最近幾個間隔的中位數」（舊做法，實測會跳 30–50 BPM）：
- *   · 使用者多半用固定手速打，不照譜上的 8 分／16 分變化間隔 ——
- *     同樣 230ms，落在 0.5 拍算 130 BPM、落在 0.25 拍算 65 BPM，逐擊跟著譜跳；
- *   · 左右手間隔不對稱（200／267ms 交替）加上 30fps 量化，同為 8 分也差 ±15%；
- *   · 偵測漏一擊 → 間隔加倍。
- *   累積滿一小節再算總和比：8 分／16 分的比例固定、左右手互相抵銷、漏一擊只佔一小部分。
+ * ⚠ 舊做法是「譜上的拍數 ÷ 時間」算 BPM，被小節綁住：
+ *   · 要累積滿一小節才算得準，兩小節一輪、兩小節擊數不同的 groove 會每小節跳 40%；
+ *   · 過門的譜跟手不一致，只能凍結在「基點」；
+ *   · 換段時密度改變，前一小節的速度不適用，自動音排錯（shuffle 第一小節三連音不見）。
+ *   改成只看手速後這些都不存在：BPM ＝ 手速 ÷ 目前 groove 的密度，換段當下就換算好。
  *
  * ═══ 除錯 ═══
  *
- * hit() 回傳剛結算的間隔（含基點有沒有更新、為什麼），getBeatInfo() 回傳
- * 每拍毫秒的來源與取樣 —— 由 freePlayRouter 印成 [tempo] log，本模組不印。
+ * hit() 回傳剛結算的間隔，getHitRate() 附上用了幾個間隔 ——
+ * 由 freePlayRouter 印成 [tempo] log，本模組不印。
  */
 
 /** 兩擊相隔小於這個值視為同一擊（雙手同時打）（ms） */
 export const MERGE_MS = 50;
 
-/** 離群倍率（fill 手速）：間隔偏離中位數超過這個倍數就不計。只擋真正的停頓 */
-const OUTLIER = 3;
+/** 手速取最近幾個間隔（偶數：左右手各半，不對稱互相抵銷） */
+const RATE_WINDOW = 8;
 
-/** getBeatMs：即時值取這段 groove 最近累積滿幾拍的間隔（一小節） */
-const BEAT_LIVE_BEATS = 4;
+/** 平常的手速取最近多久的間隔（ms） */
+const TYPICAL_MS = 30000;
+
+/** 至少要有幾個間隔才算得出手速（剛開始打、閒置歸零後） */
+const RATE_MIN = 3;
+
+/** 離群倍率：間隔偏離中位數超過這個倍數就不計。只擋真正的停頓 */
+const OUTLIER = 3;
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -69,46 +64,17 @@ const median = (xs) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 
-/**
- * 最近累積滿 BEAT_LIVE_BEATS 拍的間隔：{ beatMs, n }；不足一小節回傳 null
- * @param {Array<{ms: number, beats: number}>} intervals
- */
-function lastBar(intervals) {
-  let beats = 0, ms = 0, n = 0;
-  for (let i = intervals.length - 1; i >= 0 && beats < BEAT_LIVE_BEATS - 1e-6; i--) {
-    beats += intervals[i].beats;
-    ms += intervals[i].ms;
-    n++;
-  }
-  return beats >= BEAT_LIVE_BEATS - 1e-6 ? { beatMs: ms / beats, n } : null;
-}
-
-/** 去掉離群值後的 BPM；間隔不足回傳 null */
-function bpmOf(intervals, minCount) {
-  if (intervals.length < minCount) return null;
-  const mid = median(intervals.map((iv) => iv.ms / iv.beats));
-  const kept = intervals.filter((iv) => {
-    const r = iv.ms / iv.beats / mid;
-    return r <= OUTLIER && r >= 1 / OUTLIER;
-  });
-  if (kept.length < minCount) return null;
-  const beats = kept.reduce((s, iv) => s + iv.beats, 0);
-  const ms = kept.reduce((s, iv) => s + iv.ms, 0);
-  return (60000 * beats) / ms;
-}
-
 export function createTempoTracker() {
-  let lastMs, pending;
-  /** 目前這段 groove／fill 的間隔：{ ms, beats } */
-  let grooveIntervals, fillIntervals;
-  let baselineBpm;
+  let lastMs;
+  /** 最近的間隔（ms），最多 RATE_WINDOW 個 */
+  let intervals;
+  /** 最近 TYPICAL_MS 內的間隔：{ at（這一擊的時間）, ms } */
+  let history;
 
   function reset() {
     lastMs = null;
-    pending = null; // 上一擊的 { beats, inFill }，等下一擊來結算
-    grooveIntervals = [];
-    fillIntervals = [];
-    baselineBpm = null;
+    intervals = [];
+    history = [];
   }
   reset();
 
@@ -117,75 +83,39 @@ export function createTempoTracker() {
   }
 
   /**
-   * ① 結算「上一擊 → 這一擊」的間隔
-   * @returns {?{ ms, beats, inFill, baseline?: { measured, prev, next } }}
-   *   剛結算的間隔（除錯用）；第一擊回傳 null。baseline = 這一擊觸發了基點更新
+   * 記下「上一擊 → 這一擊」的間隔
+   * @returns {?number} 剛結算的間隔（ms，除錯用）；第一擊回傳 null
    */
   function hit(nowMs) {
-    let settled = null;
-    if (lastMs !== null && pending) {
-      const iv = { ms: nowMs - lastMs, beats: pending.beats };
-      settled = { ...iv, inFill: pending.inFill };
-      if (pending.inFill) {
-        if (!fillIntervals.length) {
-          // groove → fill：這段 groove 結束，基點 = 最後一小節
-          const bar = lastBar(grooveIntervals);
-          const bpm = bar && 60000 / bar.beatMs;
-          const prev = baselineBpm;
-          if (bpm !== null) baselineBpm = bpm;
-          settled.baseline = { measured: bpm, prev, next: baselineBpm };
-        }
-        fillIntervals.push(iv);
-      } else {
-        if (fillIntervals.length) {
-          // fill → groove：新的一段 groove 開始
-          grooveIntervals = [];
-          fillIntervals = [];
-        }
-        grooveIntervals.push(iv);
-      }
+    const ms = lastMs === null ? null : nowMs - lastMs;
+    if (ms !== null) {
+      intervals.push(ms);
+      if (intervals.length > RATE_WINDOW) intervals.shift();
+      history.push({ at: nowMs, ms });
+      while (nowMs - history[0].at > TYPICAL_MS) history.shift();
     }
     lastMs = nowMs;
-    return settled;
-  }
-
-  /** ③ 記下這一擊的時值與段落，等下一擊來結算 */
-  function setStep(beats, inFill) {
-    pending = { beats, inFill };
-  }
-
-  /** 上一段 groove 最後一小節的 BPM；還量不到回傳 null */
-  function getBaselineBpm() {
-    return baselineBpm;
+    return ms;
   }
 
   /**
-   * 每拍毫秒與它的來源（除錯用；getBeatMs 只取 beatMs）
-   * @returns {{ beatMs: ?number, source: "live"|"baseline"|"none", samples: number }}
-   *   samples = 即時值用了幾個間隔
+   * 目前每秒幾擊
+   * @returns {{ rate: ?number, samples: number }} 量不到時 rate = null；samples = 用了幾個間隔
    */
-  function getBeatInfo() {
-    const bar = fillIntervals.length ? null : lastBar(grooveIntervals);
-    if (bar) return { beatMs: bar.beatMs, source: "live", samples: bar.n };
-    if (baselineBpm) return { beatMs: 60000 / baselineBpm, source: "baseline", samples: 0 };
-    return { beatMs: null, source: "none", samples: 0 };
+  function getHitRate() {
+    if (intervals.length < RATE_MIN) return { rate: null, samples: 0 };
+    const mid = median(intervals);
+    const kept = intervals.filter((ms) => ms <= mid * OUTLIER && ms >= mid / OUTLIER);
+    if (kept.length < RATE_MIN) return { rate: null, samples: 0 };
+    const total = kept.reduce((s, ms) => s + ms, 0);
+    return { rate: (1000 * kept.length) / total, samples: kept.length };
   }
 
-  /** 目前一拍幾毫秒（自動音排程用）；量不到回傳 null */
-  function getBeatMs() {
-    return getBeatInfo().beatMs;
+  /** 平常每秒幾擊（最近 TYPICAL_MS 內的間隔中位數）；不足 RATE_MIN 個間隔回傳 null */
+  function getTypicalRate() {
+    if (history.length < RATE_MIN) return null;
+    return 1000 / median(history.map((h) => h.ms));
   }
 
-  /** 目前這段 fill 的手速（每秒幾擊）；fill 還沒開始或不足一個間隔回傳 null */
-  function getFillHitRate() {
-    if (!fillIntervals.length) return null;
-    // 手速不看譜：每個間隔都當 1 拍算，bpmOf 的結果 ÷ 60 = 每秒幾擊
-    const bpm = bpmOf(
-      fillIntervals.map((iv) => ({ ms: iv.ms, beats: 1 })),
-      1,
-    );
-    return bpm === null ? null : bpm / 60;
-  }
-
-  return { isDuplicate, hit, setStep, reset, getBaselineBpm, getBeatMs, getBeatInfo, getFillHitRate };
+  return { isDuplicate, hit, reset, getHitRate, getTypicalRate };
 }
