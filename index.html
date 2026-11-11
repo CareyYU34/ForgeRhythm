@@ -79,6 +79,9 @@
           <canvas id="output"></canvas>
         </div>
 
+        <!-- 節奏循環的速度狀態（平常／加快／放慢），只在自由模式「節奏循環」顯示（main.js updateTempoBadge） -->
+        <p class="groove-tempo-badge is-hidden" id="grooveTempoBadge" data-state="idle">節奏：等待打擊</p>
+
         <!-- ══ 歌曲模式 HUD ══
              位置：camera-frame 底部中央。使用者站著打鼓、離螢幕有距離，
              放側邊面板等於不存在。z-index 低於 calibOverlay。 -->

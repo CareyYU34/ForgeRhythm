@@ -35,13 +35,13 @@
  *     BPM ＝ 60 × 手速 ÷ 目前 groove 的密度（每拍幾擊，引擎由譜算出）
  *
  * 過門中用的是它所屬 groove 的密度（過門的譜不拿來換算）；換段那一擊起就是新 groove 的密度。
- * 換段時，把手速與「平常的手速」（tracker 最近 30 秒中位數）交給 grooveSelector 挑下一個 groove：
- * 比平常快 → 密、比平常慢 → 疏（經由 engine.hit(pickNext) —— 引擎只給候選與密度，不知道時間）。
+ * 換段時，把手速與速度狀態（tracker.getTempoState：平常／加快／放慢）交給 grooveSelector 挑下一個 groove
+ * （經由 engine.hit(pickNext) —— 引擎只給候選與密度，不知道時間）。
  *
  * ═══ 速度 log（Chrome console 需開 Verbose，篩選 "[tempo]"；也寫進 pose log）═══
  *
  * 每一擊一行：剛結算的間隔、手速（用了幾個間隔）、密度與換算出的 BPM。
- * 另外印出：併擊（雙手同時打被併掉的那一下）、閒置歸零。
+ * 另外印出：併擊（雙手同時打被併掉的那一下）、閒置歸零、速度狀態改變。
  * 數字跳動時對照這幾行就知道是哪個間隔造成的。選 groove 的 [groove] 行同樣處理。
  *
  * 同時經 trace() 寫進 perfLog：掛在該擊的 terminator.tempo（見 poseEngine/perfLog說明.md），
@@ -53,7 +53,7 @@
  *   · 開始打擊後 SPECIAL_FIRST_MS 到期；到期後的下一次換段，速度也對（見下方）
  *     → 在 special 中挑一個（越久沒出現的越優先）。
  *   · 速度對 ＝ 兩個條件都要：
- *       ① 放慢了：手速 ÷ 平常 < SLOW_RATIO（grooveSelector）—— shuffle 是放鬆、往後坐的感覺，
+ *       ① 放慢了：速度狀態為 slower（tempoTracker）—— shuffle 是放鬆、往後坐的感覺，
  *          用正常速度打會太趕；放慢手時換進來，音樂上也說得通。
  *       ② 換算的音樂速度在 [SPECIAL_BPM_MIN, SPECIAL_BPM_MAX]：shuffle 每拍打一下，
  *          音樂速度 ＝ 每分鐘幾擊。⚠ 太快時三連的自動音擠在一起，聽起來很怪（實測）；
@@ -83,14 +83,17 @@
  * ═══ 開鈸（hatOpener）與 Choke ═══
  *
  * 引擎給的譜先經過 hatOpener，反拍的 hihat 可能變成 hihat_open（規則見 hatOpener.js）。
- * 閉鈸或踏鈸響起時，還在響的開鈸在 HAT_CHOKE_MS 內淡出（audio.chokeOpenHats），
- * 就像踩合真的 hi-hat。真的截斷到開鈸時疊上踏鈸聲（chick）；譜上寫的 pedal 本身就是
- * 踏鈸，不再多疊。自動音的 choke 與 chick 落在排程時間點，自動音被取消時一併取消。
- * 段落第一擊若引擎回傳 closeHat（這段沒有能關鈸的音，見 grooveEngine 規則 7），
- * 這一擊也照同樣的方式截斷開鈸（真的截斷到才疊 chick），開鈸不會一路響過整段過門。
+ * 開鈸後下一顆音（任何音，含新的開鈸與自動音）一響，還在響的開鈸就在 HAT_CHOKE_MS 內淡出
+ * （audio.chokeOpenHats）—— 開鈸的長度就是到下一顆音的時值，不會疊在一起或一路響過過門。
+ * ⚠ 截斷在發這一擊的音之前，所以這一擊自己的開鈸不會被截斷。
+ * 只有被閉鈸（hihat）截斷時疊上踏鈸聲（chick），就像踩合真的 hi-hat；被 kick／snare 等
+ * 截斷只淡出（每次都疊的話，16 分密的節奏會多出一堆 chick）；譜上寫的 pedal 本身就是踏鈸。
+ * 自動音的 choke 與 chick 落在排程時間點，自動音被取消時一併取消。
+ * 閒置歸零時，還在響的開鈸在 IDLE_HAT_FADE_MS 內淡出（停下不打時沒有「下一顆音」）。
  *
- * ⚠ 畫面上不顯示速度（手速或音樂速度都不顯示）：音樂速度是系統端的選擇，
- *   手速顯示出來也只讓人分心。要看速度變化請看 [tempo] log。
+ * ⚠ 畫面上不顯示速度數字（手速或音樂速度都不顯示）：音樂速度是系統端的選擇，
+ *   手速顯示出來也只讓人分心。畫面只顯示速度狀態（getTempoState，main.js 標籤）；
+ *   要看速度變化請看 [tempo] log。
  *
  * ═══ 重音預覽（getUpcomingAccent）═══
  *
@@ -101,8 +104,8 @@
  */
 
 import { createGrooveEngine } from "./grooveEngine.js";
-import { createTempoTracker, MERGE_MS } from "./tempoTracker.js";
-import { selectNextGroove, pickStale, SLOW_RATIO } from "./grooveSelector.js";
+import { createTempoTracker, MERGE_MS, TEMPO_STATE_LABEL } from "./tempoTracker.js";
+import { selectNextGroove, pickStale } from "./grooveSelector.js";
 import { createHatOpener } from "./hatOpener.js";
 import { SOUNDS } from "./grooveTable.js";
 import { MIDI_TO_SOUND_ID } from "../audioEngine.js";
@@ -110,9 +113,9 @@ import { perfLog } from "../poseEngine/perfLog.js";
 
 const isCrash = (midi) => MIDI_TO_SOUND_ID[midi] === "crash";
 
-/** 這顆音會踩合 hi-hat，截斷還在響的開鈸 */
-const closesHat = (note) => note.midi === SOUNDS.hihat || note.midi === SOUNDS.pedal;
-const isPedal = (note) => note.midi === SOUNDS.pedal;
+/** 被這一擊截斷的開鈸要疊上踏鈸聲（chick）：有閉鈸、而且譜上沒寫 pedal（pedal 本身就是踏鈸） */
+const wantsChick = (notes) =>
+  notes.some((note) => note.midi === SOUNDS.hihat) && !notes.some((note) => note.midi === SOUNDS.pedal);
 
 /** 鬼音（譜上括號）的音量倍率 */
 export const GHOST_GAIN = 0.3;
@@ -134,6 +137,9 @@ export const HAT_CHOKE_MS = 40;
 
 /** 截斷開鈸時疊上的踏鈸聲（chick）音量倍率 */
 export const HAT_CHICK_GAIN = 0.7;
+
+/** 閒置歸零時，還在響的開鈸的淡出時間（ms）。不是踩合，慢慢收掉，不疊 chick。 */
+export const IDLE_HAT_FADE_MS = 300;
 
 /** 超過這麼久沒打，回到起始 groove 第一格（ms）。約 120 BPM 下三拍。 */
 export const GROOVE_RESET_MS = 1500;
@@ -183,13 +189,12 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   }
 
   /** 打擊當下發聲：一般音立刻響；Flam 立刻響倚音、FLAM_MS 後響主音 */
-  function playNotes(notes, closeHat) {
-    if (closeHat || notes.some(closesHat)) {
-      const t = audio.now();
-      const { cut } = audio.chokeOpenHats(t, HAT_CHOKE_MS / 1000);
-      // ⚠ 用 playMidiAt：chick 是這一擊的附帶聲音，不觸發打擊監聽。也不放進 scheduledAutos
-      if (cut && !notes.some(isPedal)) audio.playMidiAt(SOUNDS.pedal, t, HAT_CHICK_GAIN);
-    }
+  function playNotes(notes) {
+    // 任何音都截斷還在響的開鈸（見檔頭「開鈸與 Choke」）；在發音之前，這一擊自己的開鈸不受影響
+    const t = audio.now();
+    const { cut } = audio.chokeOpenHats(t, HAT_CHOKE_MS / 1000);
+    // ⚠ 用 playMidiAt：chick 是這一擊的附帶聲音，不觸發打擊監聽。也不放進 scheduledAutos
+    if (cut && wantsChick(notes)) audio.playMidiAt(SOUNDS.pedal, t, HAT_CHICK_GAIN);
     for (const note of notes) {
       if (note.midi === undefined) continue;
       if (!note.flam) {
@@ -220,11 +225,10 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
     };
     for (const { notes, offsetBeats } of autos) {
       const when = t0 + offsetBeats / stepBeats / rate;
-      if (notes.some(closesHat)) {
-        const { cut, undo } = audio.chokeOpenHats(when, HAT_CHOKE_MS / 1000);
-        scheduledChokes.push({ undo, when });
-        if (cut && !notes.some(isPedal)) schedule(SOUNDS.pedal, when, HAT_CHICK_GAIN);
-      }
+      // ⚠ 依序排：前一個自動音的開鈸已經登記，這裡才截得到
+      const { cut, undo } = audio.chokeOpenHats(when, HAT_CHOKE_MS / 1000);
+      scheduledChokes.push({ undo, when });
+      if (cut && wantsChick(notes)) schedule(SOUNDS.pedal, when, HAT_CHICK_GAIN);
       for (const note of notes) {
         if (note.midi === undefined) continue;
         // 與打擊當下一致：倚音落在自動音的時間點，主音晚 FLAM_MS
@@ -246,12 +250,12 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   function logTempo(intervalMs, step, grooveId) {
     const section = step.inFill ? "過門" : grooveId;
     const { rate, samples, density, bpm } = tempoNow();
-    const typicalRate = tracker.getTypicalRate();
+    const { state, typicalRate } = tracker.getTempoState();
     const ivText = intervalMs === null ? "第一擊" : `間隔 ${fmt(intervalMs)}ms`;
     const rateText = rate === null ? "手速 -" : `手速 ${fmt(rate * 60)} 擊/分（近 ${samples} 個間隔）`;
     trace(
       `[tempo] #${hitNo} ${section}｜${ivText}｜${rateText}｜平常 ${fmt(typicalRate && typicalRate * 60)}` +
-        `｜密度 ${fmt(density, 2)} → 音樂 ${fmt(bpm)} BPM`,
+        `（${TEMPO_STATE_LABEL[state]}）｜密度 ${fmt(density, 2)} → 音樂 ${fmt(bpm)} BPM`,
       {
         kind: "hit",
         hitNo,
@@ -261,15 +265,29 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
         hitRate: rate,
         samples,
         typicalRate,
+        tempoState: state,
         density,
         bpm,
       },
     );
   }
 
+  const CHANGE_REASON = { warmedUp: "量測完成", ratio: "持續達門檻", maxHold: "維持太久，當成新的平常" };
+
+  /** 速度狀態改變（tracker.hit 回傳的 change） */
+  function logStateChange({ from, to, reason }) {
+    const { typicalRate, ratio } = tracker.getTempoState();
+    trace(
+      `[tempo] 狀態 ${TEMPO_STATE_LABEL[from]} → ${TEMPO_STATE_LABEL[to]}（${CHANGE_REASON[reason]}；` +
+        `手速為平常的 ${fmt(ratio, 2)} 倍，平常 ${fmt(typicalRate && typicalRate * 60)} 擊/分）`,
+      { kind: "state", from, to, reason, ratio, typicalRate },
+    );
+  }
+
   function resetIfIdle(nowMs) {
     if (idleResetDone || nowMs - lastHitMs <= GROOVE_RESET_MS) return;
     cancelAutos();
+    audio.chokeOpenHats(audio.now(), IDLE_HAT_FADE_MS / 1000);
     engine.reset();
     tracker.reset();
     hatOpener.reset();
@@ -283,16 +301,16 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   /** 給 engine 的 pickNext：計時器到了 → 特殊節奏；否則補上量到的速度後交給 selector */
   function pickNext({ candidates, currentId, currentDensity }) {
     const { rate } = tracker.getHitRate();
-    const typicalRate = tracker.getTypicalRate();
+    const tempo = tracker.getTempoState();
+    const { typicalRate, ratio } = tempo;
     const specials = candidates.filter((c) => c.special);
     // 離開特殊節奏 → 從現在重新計時
     if (specials.some((c) => c.id === currentId)) specialDueMs = lastHitMs + specialWaitMs;
     else if (specials.length && lastHitMs >= specialDueMs) {
       // 速度對才派發（見檔頭「特殊節奏計時器」）
-      const ratio = rate && typicalRate ? rate / typicalRate : null;
       const bpmOf = (c) => (60 * rate) / c.density;
       const fit =
-        ratio !== null && ratio < SLOW_RATIO
+        rate !== null && tempo.state === "slower"
           ? specials.filter((c) => bpmOf(c) >= SPECIAL_BPM_MIN && bpmOf(c) <= SPECIAL_BPM_MAX)
           : [];
       if (fit.length) {
@@ -300,19 +318,25 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
         specialDueMs = Infinity;
         const picked = pickStale(fit); // 越久沒出現的越優先
         trace(
-          `[groove] 計時到，手速為平常的 ${ratio.toFixed(2)} 倍 → 特殊節奏 ${picked.id}` +
+          `[groove] 計時到，放慢（手速為平常的 ${fmt(ratio, 2)} 倍）→ 特殊節奏 ${picked.id}` +
             `（音樂 ${fmt(bpmOf(picked))} BPM，下次等待 ${(specialWaitMs / 1000).toFixed(0)} 秒）`,
           { kind: "special", id: picked.id, ratio, impliedBpm: bpmOf(picked), nextWaitMs: specialWaitMs },
         );
         return picked.id;
       }
       const why =
-        ratio === null
+        rate === null
           ? "量不到速度"
-          : ratio >= SLOW_RATIO
-            ? `手速為平常的 ${ratio.toFixed(2)} 倍，沒有放慢（< ${SLOW_RATIO}）`
+          : tempo.state !== "slower"
+            ? `速度狀態為${TEMPO_STATE_LABEL[tempo.state]}（手速為平常的 ${fmt(ratio, 2)} 倍），沒有放慢`
             : `音樂速度會是 ${specials.map((c) => fmt(bpmOf(c))).join("/")} BPM，超出 ${SPECIAL_BPM_MIN}–${SPECIAL_BPM_MAX}`;
-      trace(`[groove] 計時到，但${why} → 延後到下次換段`, { kind: "specialDeferred", ratio, hitRate: rate, typicalRate });
+      trace(`[groove] 計時到，但${why} → 延後到下次換段`, {
+        kind: "specialDeferred",
+        ratio,
+        hitRate: rate,
+        typicalRate,
+        tempoState: tempo.state,
+      });
     }
 
     // 目前的音樂速度：手速 ÷ 目前（即將離開的）groove 的密度（只給 log 對照）
@@ -321,13 +345,13 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
       candidates: candidates.filter((c) => !c.special),
       currentDensity,
       hitRate: rate,
-      typicalRate,
+      tempo,
     });
     // 除錯（Chrome console 需開 Verbose 才看得到；也寫進 pose log）
     trace(
       `[groove] ${currentId}｜手速 ${fmt(rate && rate * 60)}／平常 ${fmt(typicalRate && typicalRate * 60)} 擊/分` +
         `｜→ ${result.id}（${result.reason}；音樂 ${fmt(currentBpm)} → ${fmt(result.impliedBpm)} BPM）`,
-      { kind: "select", from: currentId, hitRate: rate, typicalRate, currentBpm, ...result },
+      { kind: "select", from: currentId, hitRate: rate, typicalRate, tempoState: tempo.state, currentBpm, ...result },
     );
     return result.id;
   }
@@ -354,16 +378,28 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
       cancelAutos();
 
       // ⚠ 順序：先結算間隔，再走格（引擎可能在這一擊決定下一個 groove）
-      const intervalMs = tracker.hit(nowMs);
+      const { intervalMs, change } = tracker.hit(nowMs);
+      if (change) logStateChange(change);
       const grooveId = engine.getPosition().grooveId; // 這一擊所屬的 groove（engine.hit 可能換段）
       const step = engine.hit(pickNext);
       hitNo++;
       logTempo(intervalMs, step, grooveId);
       const { notes, autos } = hatOpener.apply(step);
 
-      playNotes(notes, step.closeHat);
+      playNotes(notes);
       // ⚠ 在 tracker.hit 之後：手速要含這一擊剛結算的間隔
       scheduleAutos(autos, step.beats);
+    },
+
+    /**
+     * 畫面顯示用的速度狀態（只讀，不歸零）。
+     * @returns {?string} null = 不是節奏循環；"idle" = 還沒打或已閒置（下一擊會歸零）；
+     *   其餘為 tempoTracker 的狀態（"measuring"｜"normal"｜"faster"｜"slower"）
+     */
+    getTempoState(nowMs) {
+      if (getFreeStyle() !== "groove") return null;
+      if (nowMs - lastHitMs > GROOVE_RESET_MS) return "idle";
+      return tracker.getTempoState().state;
     },
 
     /**

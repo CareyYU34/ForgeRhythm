@@ -28,8 +28,10 @@
  *        ⚠ 自動音不算擊數：selector 用的密度只算要打的那幾擊。
  *
  * 開鈸：反拍的 hihat 會隨機變成 hihat_open（鬼音除外，規則見 hatOpener.js），譜上不用寫。
- *        想固定開鈸就直接寫 "hihat_open"。hihat 或 pedal 響起時會截斷還在響的開鈸，
- *        hihat 截斷時會自動疊上踏鈸聲，譜上不用寫 pedal。
+ *        標 openRound 的 groove 改成整輪（全部 hihat）一起開或一起不開。
+ *        想固定開鈸就直接寫 "hihat_open"。開鈸後下一顆音（任何音，含自動音）一響就截斷，
+ *        所以開鈸的長度就是到下一顆音的時值；想讓它響久一點，後面寫 rest。
+ *        被 hihat 截斷時會自動疊上踏鈸聲，譜上不用寫 pedal。
  *
  * 休止：寫 "rest"，時值寫法同音名（"rest/16"、"rest/8."，沒寫 = unit）。
  *        rest 不是一擊、不用打：它的長度併進前一擊，只影響 BPM 換算與密度。
@@ -65,6 +67,8 @@
  *   fill     過門 id；給陣列則隨機挑一個
  *            空陣列 [] = 沒有過門：輪數走完直接換下一個 groove，整段都是 groove
  *            ⚠ special 只配 shuffle 用的過門（fill2D／2E／2H／3D），一般 groove 不要用這幾個
+ *   openRound （選填）true = 開鈸以「一輪」為單位：一輪開頭擲骰，開了整輪 hihat 全開，
+ *            不會只開一兩個（見 hatOpener.js）。過門前由 groove 補的半輪不開。
  *
  * 每段幾輪不在這裡寫，所有 groove 共用 LOOPS。
  *
@@ -344,16 +348,18 @@ export const GROOVES = {
   // ─── quarter：4 分為主，兩小節一輪（一輪 8 拍）───
   // 快歌用的節奏：密度低（每拍 1.25–2 擊），同樣的手速音樂速度比 rock8 高。
   // 手比平常快時由 selector 換進來（與 16 分組同屬快檔）。
+  // hi-hat 的組（B／C／D）標 openRound：開鈸以一輪（兩小節）為單位，整輪全開（快歌的開鈸打法）。
   // 註解的拍點以「｜」分兩小節。
   // 沒有 hi-hat。K: 1 2& 3&｜1 3 3&　S: 2 4｜2 4
   quarterA: {
     unit: 8,
-    steps: "kick/4 snare kick/4 kick snare/4 " + "kick/4 snare/4 kick kick snare/4",
+    steps: "kick/4 snare kick rest kick snare/4 " + "kick/4 snare/4 kick kick snare/4",
     fill: ["fill2A", "fill2G", "fill3A", "fill4A"],
   },
   // 4 分 hi-hat。K: 1 3 4&｜1& 3 3&　S: 2 4｜2 2& 4
   quarterB: {
     unit: 8,
+    openRound: true,
     steps:
       "hihat+kick/4 hihat+snare/4 hihat+kick/4 hihat+snare kick " +
       "hihat kick hihat+snare snare hihat+kick kick hihat+snare/4",
@@ -362,6 +368,7 @@ export const GROOVES = {
   // 4 分 hi-hat。K: 1 2 2&｜1 2 2& 3 4　S: 3 4&｜1& 3 4&
   quarterC: {
     unit: 8,
+    openRound: true,
     steps:
       "hihat+kick/4 hihat+kick kick hihat+snare/4 hihat snare " +
       "hihat+kick snare hihat+kick kick hihat+snare+kick/4 hihat+kick snare",
@@ -371,6 +378,7 @@ export const GROOVES = {
   // hi-hat+S: 1 2& 4｜1& 3 4　K: 1& 2 3 3& 4&｜1 2 2& 3& 4&
   quarterD: {
     unit: 8,
+    openRound: true,
     steps:
       "hihat+snare kick kick hihat+snare kick kick hihat+snare kick " +
       "kick hihat+snare kick kick hihat+snare kick hihat+snare kick",

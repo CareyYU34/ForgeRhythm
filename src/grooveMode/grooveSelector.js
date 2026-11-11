@@ -6,21 +6,22 @@
  *
  * ═══ 原則：比平常快 → 快歌或密的節奏 ═══
  *
- * 「平常」= 使用者最近 30 秒的手速中位數（tempoTracker.getTypicalRate），會跟著人變。
+ * 「比平常快／慢」由 tempoTracker 的狀態決定（平常／加快／放慢，含遲滯與鎖存，見 tempoTracker.js），
+ * 這裡不看當下的倍數。「平常」是使用者自己的手速中位數，會跟著人變：
  * 每個人舒適的手速差很多，固定門檻（例如每秒 6 下才上 16 分）有人一輩子碰不到；
  * 用自己的中位數當中心，區間自動貼合每個人。
  *
- * ⚠ 中位數會追上來：加快後一直維持，30 秒後「快」就變成「平常」，回到中間那檔。
+ * ⚠ 加快一直維持，MAX_HOLD_MS 後「快」就變成「平常」，回到中間那檔。
  *   這是刻意的 —— 獎勵的是「比剛才快／慢」的變化，不是絕對速度。
  *
  * ═══ 兩檔（依密度＝每拍幾擊，由譜算出）═══
  *
- *     手速 ÷ 平常 > FAST_RATIO → 快檔：4 分組（密度 < TIER_QUARTER_MAX，音樂速度快 = 快歌）
- *                                     與 16 分組（密度 ≥ TIER_DENSE_MIN，音樂中速但很密）
- *     其餘                     → 中檔：8 分、rock16、ghost、disco……
+ *     加快（faster） → 快檔：4 分組（密度 < TIER_QUARTER_MAX，音樂速度快 = 快歌）
+ *                            與 16 分組（密度 ≥ TIER_DENSE_MIN，音樂中速但很密）
+ *     其餘           → 中檔：8 分、rock16、ghost、disco……
  *
  * ⚠ 4 分不能放「慢」：真實的音樂裡 4 分為主的節奏是快歌在用的（龐克、快板搖滾、two-beat），
- *   慢歌反而打 16 分。手慢下來就留在中檔（慢速 8 beat）；比平常慢 SLOW_RATIO 倍時，
+ *   慢歌反而打 16 分。手慢下來就留在中檔（慢速 8 beat）；放慢（slower）狀態下，
  *   計時到的 shuffle 才會出現（freePlayRouter 判斷，不經過這裡）。
  * ⚠ 16 分也不能放慢：手速只有平常的 0.85 倍時，hat16 換算只剩 40 BPM 左右。
  * 快檔裡 4 分與 16 分密度差很遠，檔內只往相近密度走，所以進了哪一組就留在那一組；
@@ -39,7 +40,7 @@
  *
  * ═══ 量不到速度 ═══
  *
- * 手速為 null（剛開始打）→ 在目前同密度的候選中挑
+ * 手速為 null 或狀態為量測中（剛開始打）→ 在目前同密度的候選中挑
  * （密度不變，使用者照原本的手速打就對得上）；沒有同密度的（例如從 special 回來）→ 全部候選。
  *
  * ═══ 多久沒出現（age）═══
@@ -49,10 +50,7 @@
  * 目前這個權重 0 → 有別的選擇時不會連續兩段一樣。
  */
 
-/** 手速 ÷ 平常 低於這個 → 算「放慢了」（shuffle 的條件之一，見 freePlayRouter） */
-export const SLOW_RATIO = 0.85;
-/** 手速 ÷ 平常 高於這個 → 快檔 */
-export const FAST_RATIO = 1.2;
+import { TEMPO_STATE_LABEL } from "./tempoTracker.js";
 
 /** 密度低於這個算 4 分組（1.25–1.625；quarterD 每個 8 分都有音，密度 2 算中檔） */
 const TIER_QUARTER_MAX = 1.9;
@@ -104,22 +102,22 @@ export function pickStale(xs) {
  *                                    可以換過去的 groove（不含 special），age 見上方說明
  * @param {number}   p.currentDensity  目前 groove 的密度
  * @param {?number}  p.hitRate         目前手速（每秒幾擊）
- * @param {?number}  p.typicalRate     平常的手速（最近 30 秒中位數）
+ * @param {Object}   p.tempo           tempoTracker.getTempoState()：{ state, ratio }（ratio 只給 reason 用）
  * @returns {{ id: string, impliedBpm: ?number, tier: ?string, reason: string }}
  *   impliedBpm = 換過去後的音樂速度；tier = 目標檔（"mid"｜"fast"）
  */
-export function selectNextGroove({ candidates, currentDensity, hitRate, typicalRate }) {
+export function selectNextGroove({ candidates, currentDensity, hitRate, tempo }) {
   if (candidates.length === 1) {
     return { id: candidates[0].id, impliedBpm: null, tier: null, reason: "只有一個候選" };
   }
-  if (!hitRate || !typicalRate) {
+  if (!hitRate || tempo.state === "measuring") {
     const same = candidates.filter((c) => densityGap(c.density, currentDensity) < SAME_DENSITY);
     const { id } = pickStale(same.length ? same : candidates);
     return { id, impliedBpm: null, tier: null, reason: same.length ? "量不到速度，同密度" : "量不到速度，全部候選" };
   }
 
-  const ratio = hitRate / typicalRate;
-  const tier = ratio > FAST_RATIO ? "fast" : "mid";
+  const ratio = tempo.ratio;
+  const tier = tempo.state === "faster" ? "fast" : "mid";
   const stay = tier === tierOf(currentDensity);
   const scored = candidates.map((c) => {
     const impliedBpm = (60 * hitRate) / c.density;
@@ -134,7 +132,10 @@ export function selectNextGroove({ candidates, currentDensity, hitRate, typicalR
     const nearest = Math.min(...others.map((c) => densityGap(c.density, currentDensity)));
     pool = others.filter((c) => densityGap(c.density, currentDensity) <= nearest + TOLERANCE);
   }
-  let reason = `${TIER_LABEL[tier]}（手速為平常的 ${ratio.toFixed(2)} 倍）${stay ? "，相近密度" : "，換檔"}`;
+  const ratioText = ratio === null ? "-" : ratio.toFixed(2);
+  let reason =
+    `${TIER_LABEL[tier]}（${TEMPO_STATE_LABEL[tempo.state]}，手速為平常的 ${ratioText} 倍）` +
+    (stay ? "，相近密度" : "，換檔");
   if (!pool.length && inTier.length) {
     pool = inTier;
     reason += " → 相近密度沒有，檔內全部";

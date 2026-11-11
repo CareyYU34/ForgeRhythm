@@ -1345,6 +1345,34 @@ body {
   background: rgba(0, 0, 0, 0.75);
 }
 
+/* ══ 節奏循環速度狀態（camera-frame 左上）══════════════════════════════
+   使用者站著打鼓、離螢幕有距離 → 字要大、狀態用顏色區分 */
+.groove-tempo-badge {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: clamp(16px, 2.4vw, 24px);
+  font-weight: 700;
+  pointer-events: none;
+  transition: background 0.2s;
+}
+.groove-tempo-badge[data-state="idle"],
+.groove-tempo-badge[data-state="measuring"] {
+  color: rgba(255, 255, 255, 0.7);
+}
+.groove-tempo-badge[data-state="faster"] {
+  background: rgba(220, 70, 40, 0.85);
+}
+.groove-tempo-badge[data-state="slower"] {
+  background: rgba(40, 110, 220, 0.85);
+}
+
 /* ══ HUD（camera-frame 底部中央）═══════════════════════════════════════ */
 
 .song-hud {

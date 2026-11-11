@@ -42,6 +42,7 @@ import { createSongSession } from "./songMode/songSession.js";
 import { createPartSession } from "./songMode/partSession.js";
 import { createHitRouter } from "./songMode/hitRouter.js";
 import { createFreePlayRouter } from "./grooveMode/freePlayRouter.js";
+import { TEMPO_STATE_LABEL } from "./grooveMode/tempoTracker.js";
 
 const video = document.getElementById("webcam");
 const canvas = document.getElementById("output");
@@ -56,6 +57,21 @@ function syncFreeStyleVisibility() {
   const hidden = state.freeStyle !== "mapping";
   rackEl.classList.toggle("is-hidden", hidden);
   rackTitleEl?.classList.toggle("is-hidden", hidden);
+}
+
+const tempoBadgeEl = document.getElementById("grooveTempoBadge");
+const TEMPO_BADGE_TEXT = { idle: "等待打擊", ...TEMPO_STATE_LABEL };
+
+/**
+ * 節奏循環的速度狀態標籤：只在自由模式「節奏循環」、沒有歌曲／分部 session 時顯示。
+ * 每幀由 hudLoop 呼叫，狀態沒變就不碰 DOM。
+ */
+function updateTempoBadge() {
+  const tempoState = getActiveSession() ? null : freePlayRouter.getTempoState(performance.now());
+  tempoBadgeEl.classList.toggle("is-hidden", tempoState === null);
+  if (tempoState === null || tempoBadgeEl.dataset.state === tempoState) return;
+  tempoBadgeEl.dataset.state = tempoState;
+  tempoBadgeEl.textContent = `節奏：${TEMPO_BADGE_TEXT[tempoState]}`;
 }
 
 const settingsToggle = document.getElementById("settingsToggle");
@@ -513,6 +529,7 @@ function hudLoop() {
   const session = getActiveSession();
   const playing = !!(session && session.isPlaying());
   syncPerfLog(session, playing);
+  updateTempoBadge();
   if (!playing) return;
 
   const transport = getActiveTransport();

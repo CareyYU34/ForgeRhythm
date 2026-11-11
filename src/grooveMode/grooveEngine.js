@@ -26,11 +26,9 @@
  *   6. 換段（規則 2 沒有過門、或規則 3）後的第一擊加 crash：
  *      hihat／hihat_open／ride／ride_bell 換成一個 crash，其他音照響；沒有鈸就直接加上。
  *      上一段的最後一個音已有 crash → 不加（避免連兩下 crash）。
- *   7. 段落（過門、或換段後的 groove）的第一擊，符合任一條件 → 回傳 closeHat，
- *      由上一層截斷還在響的開鈸：
- *        · 這一擊有 crash（換段加的或譜上寫的）—— crash 取代了 hihat，等於重新起頭
- *        · 這一段完全沒有能關鈸的音（hihat／pedal）—— 否則上一段結尾的開鈸會一路響過整段
- *          （例如 disco 結尾的 hihat_open 響進過門）
+ *   7. 標 openRound 的 groove 回傳 openRound／roundStart／fullRound（是否完整一輪：
+ *      過門前由 groove 補的半輪不算），由 hatOpener 整輪開鈸（見 hatOpener.js）。
+ *      開鈸何時截斷是上一層的事（freePlayRouter：下一顆音一出來就截斷），引擎不管。
  *   8. 越久沒出現的越優先：記錄每個 groove／fill 上次出現在第幾次挑選，
  *      age = 隔了幾次沒被選到（從沒出現過的最大，目前這個 = 0）。
  *      groove 的 age 附在候選上交給 pickNext；過門在 groove 的 fill 清單中依 age 挑。
@@ -171,10 +169,6 @@ function grooveHead(steps, headBeats) {
 const CRASH_REPLACES = new Set([SOUNDS.hihat, SOUNDS.hihat_open, SOUNDS.ride, SOUNDS.ride_bell]);
 const CRASH_NOTE = { midi: SOUNDS.crash, ghost: false, flam: false };
 const hasCrash = (notes) => notes.some((n) => n.midi === SOUNDS.crash);
-
-/** 能關鈸（踩合 hi-hat）的音 */
-const CLOSES_HAT = new Set([SOUNDS.hihat, SOUNDS.pedal]);
-const anyClosesHat = (steps) => steps.some((s) => s.notes.some((n) => CLOSES_HAT.has(n.midi)));
 
 /** 換段第一擊：鈸換成一個 crash，其他音照響；沒有鈸就直接加上。⚠ 回傳新陣列，不改到譜 */
 function withCrash(notes) {
@@ -318,17 +312,9 @@ export function createGrooveEngine() {
     fillLast[id] = fillSeq++;
     return id;
   }
-  /** 這一段有沒有能關鈸的音（規則 7）；過門只看它自己的音，不含開頭由 groove 打的部分 */
-  const grooveCloses = {};
-  for (const [id, steps] of Object.entries(grooveSteps)) grooveCloses[id] = anyClosesHat(steps);
-  const fillCloses = {};
-  for (const [id, f] of Object.entries(fillSteps)) fillCloses[id] = anyClosesHat(f.steps);
-
   let grooveId, fillId, step, loopCount, loopTarget;
   /** 下一擊是換段的第一擊 → 加 crash（規則 6） */
   let crashNext;
-  /** 下一擊是換段的第一擊（規則 7 用；crashNext 在上一段已有 crash 時是 false，不能共用） */
-  let newSegment;
   /** 這個 groove 循環完要進的過門與實際要走的格子（進入 groove 時先挑好，peek 用） */
   let plannedFill, plannedFillSteps;
 
@@ -356,7 +342,6 @@ export function createGrooveEngine() {
     enterGroove(pick(START_GROOVE)); // 陣列則隨機
     step = 0;
     crashNext = false;
-    newSegment = false;
   }
   reset();
 
@@ -368,7 +353,9 @@ export function createGrooveEngine() {
    *   inFill  這一擊是否屬於過門（過門開頭由 groove 打的幾擊不算）
    *   offbeat 這一擊是否不落在拍點上
    *   autos   跟著這一擊的自動音：[{ notes, offsetBeats, offbeat }]，offsetBeats = 距離這一擊幾拍
-   *   closeHat 這一擊要截斷還在響的開鈸（規則 7）
+   *   openRound  這一擊是標 openRound 的 groove 打的（含過門前補的半輪，不含過門）（規則 7）
+   *   roundStart 這一擊是一輪（或過門前半輪）的第一擊（規則 7）
+   *   fullRound  這一擊屬於完整的一輪（規則 7）
    *
    * @param {Function} [pickNext]  換段時挑下一個 groove：
    *   pickNext({ candidates: [{ id, density, special, age }], currentId, currentDensity }) → groove id
@@ -380,19 +367,17 @@ export function createGrooveEngine() {
     let { beats } = steps[step];
     const { offbeat } = steps[step];
     const notes = crashNext ? withCrash(steps[step].notes) : steps[step].notes;
-    const fillStart = inFill && (step === 0 || steps[step - 1].fromGroove);
-    const closeHat =
-      ((newSegment || fillStart) && hasCrash(notes)) ||
-      (newSegment && !grooveCloses[grooveId]) ||
-      (fillStart && !fillCloses[fillId]);
+    // 標 openRound 的 groove 打的音（含過門前由 groove 補的半輪；過門本身不算）
+    const openRound = !!GROOVES[grooveId].openRound && !inFill;
+    const roundStart = openRound && step === 0;
+    // 完整的一輪 = 不在過門（過門前補的半輪屬於 plannedFillSteps，fillId 已設定）
+    const fullRound = openRound && fillId === null;
     crashNext = false;
-    newSegment = false;
     step++;
 
     /** 這段結束 → 換 groove；新段第一擊加 crash（這段最後一個音已有 crash 則不加） */
     const enterNext = () => {
       crashNext = !hasCrash(steps[steps.length - 1].notes);
-      newSegment = true;
       enterGroove(
         pickNext
           ? pickNext({
@@ -422,7 +407,7 @@ export function createGrooveEngine() {
         else enterNext();
       }
     }
-    return { notes, beats, inFill, offbeat, autos, closeHat };
+    return { notes, beats, inFill, offbeat, autos, openRound, roundStart, fullRound };
   }
 
   /**

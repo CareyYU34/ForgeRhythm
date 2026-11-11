@@ -10,7 +10,7 @@ import {
   summarizeKneeMotion,
   thighLineDistance,
 } from "./math.js";
-import { calcKneeRisingAdj, getZoneParams } from "./calibrationProfile.js";
+import { calcKneeRisingAdj, getZoneParams, TUNING } from "./calibrationProfile.js";
 import { createHitEffectManager } from "./hitEffects.js";
 import { createAccentPose } from "./accentPose.js";
 import { perfLog } from "./perfLog.js";
@@ -274,8 +274,8 @@ function pickPFColor(pf, profile, side, zone) {
   if (!profile) return "#fff"; // 未校準
   const params = zone ? getZoneParamsIfAvailable(profile, side, zone) : null;
   if (!params) return "#fff";
-  if (pf < params.PF_HIT) return "#ff4d4d"; // 打擊區（紅）
-  return "#4dff88"; // 武裝區（綠）：PF 回到 PF_HIT 之上即重新武裝
+  if (pf < params.PF_HIT + TUNING.PF_HIT_SLACK) return "#ff4d4d"; // 打擊區（紅）
+  return "#4dff88"; // 武裝區（綠）：PF 回到判定線之上即重新武裝
 }
 
 // 安全地取得 zone 參數，沒有就回 null（避免 import 再一次）
@@ -841,11 +841,11 @@ export function createPredictWebcam({
             state.rightState = monitoringTriggerConditions(
               state.rightState,
               state.rightThighCordon,
-              rightParams.PF_HIT + rightKneeAdj, // ← 提膝時門檻跟著升高
+              rightParams.PF_HIT + TUNING.PF_HIT_SLACK + rightKneeAdj, // ← 提膝時門檻跟著升高
               webTimeMs,
               rightParams.COOLDOWN_MS,
               rightHandSpeed,
-              rightParams.SPEED_HIT,
+              rightParams.SPEED_HIT * TUNING.SPEED_HIT_SCALE,
             );
           }
 
@@ -855,11 +855,11 @@ export function createPredictWebcam({
             state.leftState = monitoringTriggerConditions(
               state.leftState,
               state.leftThighCordon,
-              leftParams.PF_HIT + leftKneeAdj, // ← 提膝時門檻跟著升高
+              leftParams.PF_HIT + TUNING.PF_HIT_SLACK + leftKneeAdj, // ← 提膝時門檻跟著升高
               webTimeMs,
               leftParams.COOLDOWN_MS,
               leftHandSpeed,
-              leftParams.SPEED_HIT,
+              leftParams.SPEED_HIT * TUNING.SPEED_HIT_SCALE,
             );
           }
 
@@ -961,10 +961,10 @@ export function createPredictWebcam({
               spPkR: r2(state.rightState?.strokeSpeedMax),
               armL: !!state.leftState?.canHit,
               armR: !!state.rightState?.canHit,
-              pfHitL: leftParams ? r2(leftParams.PF_HIT + leftKneeAdj) : null,
-              pfHitR: rightParams ? r2(rightParams.PF_HIT + rightKneeAdj) : null,
-              spHitL: leftParams ? leftParams.SPEED_HIT : null,
-              spHitR: rightParams ? rightParams.SPEED_HIT : null,
+              pfHitL: leftParams ? r2(leftParams.PF_HIT + TUNING.PF_HIT_SLACK + leftKneeAdj) : null,
+              pfHitR: rightParams ? r2(rightParams.PF_HIT + TUNING.PF_HIT_SLACK + rightKneeAdj) : null,
+              spHitL: leftParams ? r2(leftParams.SPEED_HIT * TUNING.SPEED_HIT_SCALE) : null,
+              spHitR: rightParams ? r2(rightParams.SPEED_HIT * TUNING.SPEED_HIT_SCALE) : null,
               kAdjL: r2(leftKneeAdj),
               kAdjR: r2(rightKneeAdj),
               kRestYL: r2(state.kneeRestY?.left), // 提膝補償的膝蓋基準 y
