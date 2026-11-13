@@ -28,6 +28,8 @@
  *   由 partSession 接到 audioEngine 的 backingGain。
  */
 
+import { perfLog } from "../poseEngine/perfLog.js";
+
 export function createClockTransport({
   audioNow,
   durationSec = 0,
@@ -58,7 +60,7 @@ export function createClockTransport({
       try {
         cb();
       } catch (err) {
-        console.error(`[clockTransport] ${event} handler error:`, err);
+        perfLog.log("error", "clockTransport", `${event} handler error`, { error: String(err?.stack ?? err) });
       }
     }
   }

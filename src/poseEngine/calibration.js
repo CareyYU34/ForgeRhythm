@@ -28,6 +28,7 @@ import {
   handBasePointFromPoseLandmarks,
   isStrictlyNormalizedPoint,
 } from "./math.js";
+import { perfLog } from "./perfLog.js";
 
 // ─── 常數 ─────────────────────────────────────────────────────────────────────
 
@@ -301,7 +302,7 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
       smoothedPF = store.smoothedPF;
       baselinePF = store.baselinePF;
       baselineInitialized = true;
-      console.log(`[校準] ${zone} 繼承 baseline: ${baselinePF.toFixed(4)}`);
+      perfLog.log("log", "校準", `${zone} 繼承 baseline: ${baselinePF.toFixed(4)}`);
     }
 
     phase = Phase.STRIKING;
@@ -376,12 +377,10 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
     }
 
     if (elapsed >= SNAPSHOT_SEC) {
-      console.log(
-        "[校準] front snapshot 完成",
-        "left:",
-        baselineLeft.baselinePF.toFixed(4),
-        "right:",
-        baselineRight.baselinePF.toFixed(4),
+      perfLog.log(
+        "log",
+        "校準",
+        `front snapshot 完成 left: ${baselineLeft.baselinePF.toFixed(4)} right: ${baselineRight.baselinePF.toFixed(4)}`,
       );
       currentZoneIndex = 0; // right_front
       strikeCount = 0;
@@ -472,7 +471,7 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
               phase = Phase.DONE;
               emitStatus();
             } else {
-              console.warn("[校準] 資料不完整，繼續採集");
+              perfLog.log("warn", "校準", "資料不完整，繼續採集");
               enterStriking(nowMs);
             }
           } else {
@@ -486,7 +485,7 @@ export function createCalibrationEngine({ onStatusChange } = {}) {
 
       // 超時
       if (nowMs - liftStartMs > LIFTED_TIMEOUT_MS) {
-        console.log("[校準] 抬手超時，取消本次偵測");
+        perfLog.log("log", "校準", "抬手超時，取消本次偵測");
         strikeState = StrikeState.RESTING;
         peakPF = 0;
         peakHandSpeed = 0;

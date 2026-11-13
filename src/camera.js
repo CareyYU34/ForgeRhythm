@@ -1,3 +1,5 @@
+import { perfLog } from "./poseEngine/perfLog.js";
+
 export function syncCanvasToCameraFrame({ frameEl, canvas }) {
   if (!frameEl) return;
   const rect = frameEl.getBoundingClientRect();
@@ -49,7 +51,7 @@ export async function startWebcam({
   });
 
   video.srcObject = state.stream;
-  console.log("Webcam started");
+  perfLog.log("log", "camera", "Webcam started");
 
   if (!state._boundLoadedData) {
     state._boundLoadedData = () => startPredictLoop();
@@ -85,5 +87,5 @@ export function stopWebcam({ video, canvasCtx, state, resetPoseState }) {
 
   video.srcObject = null;
   resetPoseState();
-  console.log("Webcam stopped");
+  perfLog.log("log", "camera", "Webcam stopped");
 }

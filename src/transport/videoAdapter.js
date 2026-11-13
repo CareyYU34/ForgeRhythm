@@ -27,6 +27,8 @@
  *    "ratechange" 事件讓 songSession 在前奏 count-in 期間變速時重新錨定。
  */
 
+import { perfLog } from "../poseEngine/perfLog.js";
+
 export function createVideoAdapter({ videoEl }) {
   /** @type {Map<string, Set<Function>>} */
   const handlers = new Map();
@@ -41,7 +43,7 @@ export function createVideoAdapter({ videoEl }) {
       try {
         cb();
       } catch (err) {
-        console.error(`[videoAdapter] ${event} handler error:`, err);
+        perfLog.log("error", "videoAdapter", `${event} handler error`, { error: String(err?.stack ?? err) });
       }
     }
   }
@@ -98,7 +100,7 @@ export function createVideoAdapter({ videoEl }) {
     play() {
       if (destroyed) return;
       videoEl.play().catch((err) => {
-        console.warn("[videoAdapter] play rejected:", err.message);
+        perfLog.log("warn", "videoAdapter", `play rejected: ${err.message}`);
       });
     },
 

@@ -52,6 +52,7 @@
 
 import { SOUNDS, START_GROOVE, LOOPS, GROOVES, FILLS } from "./grooveTable.js";
 import { pickStale } from "./grooveSelector.js";
+import { perfLog } from "../poseEngine/perfLog.js";
 
 /** 一小節幾拍（LOOPS 的單位） */
 const BAR_BEATS = 4;
@@ -187,7 +188,7 @@ const countHits = (steps) => steps.filter((s) => !s.auto).length;
 
 /** 載入時檢查整張表，寫錯只警告不中斷（壞掉的音名該擊不發聲）。 */
 function validateTable() {
-  const warn = (msg) => console.warn("[grooveTable]", msg);
+  const warn = (msg) => perfLog.log("warn", "grooveTable", msg);
   const checkUnit = (where, unit) => {
     const { value, mod } = unitDur(unit);
     if (!NOTE_VALUES.includes(value) || mod === ".") {

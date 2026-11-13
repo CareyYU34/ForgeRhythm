@@ -50,15 +50,17 @@
  * ═══ 特殊節奏計時器（grooveTable 標 special 的 groove，shuffle 類）═══
  *
  * 特殊節奏不參與依速度挑選，只在計時器到時出現，而且優先於 selector：
- *   · 開始打擊後 SPECIAL_FIRST_MS 到期；到期後的下一次換段，速度也對（見下方）
- *     → 在 special 中挑一個（越久沒出現的越優先）。
- *   · 速度對 ＝ 兩個條件都要：
- *       ① 放慢了：速度狀態為 slower（tempoTracker）—— shuffle 是放鬆、往後坐的感覺，
- *          用正常速度打會太趕；放慢手時換進來，音樂上也說得通。
- *       ② 換算的音樂速度在 [SPECIAL_BPM_MIN, SPECIAL_BPM_MAX]：shuffle 每拍打一下，
- *          音樂速度 ＝ 每分鐘幾擊。⚠ 太快時三連的自動音擠在一起，聽起來很怪（實測）；
- *          平常就打很慢的人，放慢後也可能太慢。
- *     不對 → 這次不派發，計時器維持到期，下一次換段再檢查（log 記 specialDeferred）。
+ *   · 開始打擊後 SPECIAL_FIRST_MS 到期 → 卡住等放慢：到期後任何一擊的倍數（手速 ÷ 平常，
+ *     tempoTracker）≤ SPECIAL_RATIO_MAX 就鎖存「可以進」（specialReady），
+ *     之後手速回升也不取消；下一次換段 → 在 special 中挑一個（越久沒出現的越優先）。
+ *     shuffle 是放鬆、往後坐的感覺，用正常速度打會太趕；放慢手時換進來，音樂上也說得通。
+ *     ⚠ 看當下的倍數、不看速度狀態：狀態要持續 CONFIRM_MS 才成立，放慢一下就鎖存才跟手。
+ *     ⚠ 只在換段時切換（不在 groove 中途硬切）。
+ *   · 安全網：換算的音樂速度要在 [SPECIAL_BPM_MIN, SPECIAL_BPM_MAX]，超出就延後到下次換段
+ *     （鎖存保留）。⚠ 太快時三連的自動音擠在一起，聽起來很怪（實測）。
+ *     ⚠ 舊做法是「速度狀態為 slower ＋ 音樂速度在範圍內」才派發：shuffle 每拍打一下時
+ *       音樂速度 ＝ 每分鐘幾擊，平常 300 擊/分的人放慢後仍有 240 BPM，永遠進不來
+ *       （11-11、11-13 log 延後 30 多次）。
  *     ⚠ 刻意沒有保底：一直不放慢就不會出現 shuffle（想聽就放慢手）。
  *   · 每出現一次，等待時間 × SPECIAL_SHRINK（不低於 SPECIAL_MIN_MS）
  *     → 打得越久，特殊節奏越常出現。
@@ -104,7 +106,7 @@
  */
 
 import { createGrooveEngine } from "./grooveEngine.js";
-import { createTempoTracker, MERGE_MS, TEMPO_STATE_LABEL } from "./tempoTracker.js";
+import { createTempoTracker, MERGE_MS, MAX_HOLD_MS, TEMPO_STATE_LABEL } from "./tempoTracker.js";
 import { selectNextGroove, pickStale } from "./grooveSelector.js";
 import { createHatOpener } from "./hatOpener.js";
 import { SOUNDS } from "./grooveTable.js";
@@ -150,7 +152,9 @@ export const SPECIAL_FIRST_MS = 60000;
 export const SPECIAL_SHRINK = 0.8;
 /** 特殊節奏等待的下限（ms） */
 export const SPECIAL_MIN_MS = 20000;
-/** 特殊節奏的音樂速度範圍（BPM）：換算超出就不派發 */
+/** 計時到之後，倍數（手速 ÷ 平常）≤ 這個值就鎖存「可以進特殊節奏」 */
+export const SPECIAL_RATIO_MAX = 0.8;
+/** 特殊節奏的音樂速度範圍（BPM，安全網）：換算超出就延後到下次換段 */
 export const SPECIAL_BPM_MIN = 80;
 export const SPECIAL_BPM_MAX = 150;
 
@@ -174,6 +178,8 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   /** 特殊節奏：目前的等待長度、到期時間（null = 還沒開始計時；Infinity = 正在特殊節奏中） */
   let specialWaitMs = SPECIAL_FIRST_MS;
   let specialDueMs = null;
+  /** 計時到之後已經放慢過（鎖存，派發或閒置歸零才清掉） */
+  let specialReady = false;
 
   /** 取消還沒開始響的自動音（已經在響的讓它響完，不切尾音）與它們的 choke */
   function cancelAutos() {
@@ -250,12 +256,12 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
   function logTempo(intervalMs, step, grooveId) {
     const section = step.inFill ? "過門" : grooveId;
     const { rate, samples, density, bpm } = tempoNow();
-    const { state, typicalRate } = tracker.getTempoState();
+    const { state, typicalRate, thawed } = tracker.getTempoState();
     const ivText = intervalMs === null ? "第一擊" : `間隔 ${fmt(intervalMs)}ms`;
     const rateText = rate === null ? "手速 -" : `手速 ${fmt(rate * 60)} 擊/分（近 ${samples} 個間隔）`;
     trace(
       `[tempo] #${hitNo} ${section}｜${ivText}｜${rateText}｜平常 ${fmt(typicalRate && typicalRate * 60)}` +
-        `（${TEMPO_STATE_LABEL[state]}）｜密度 ${fmt(density, 2)} → 音樂 ${fmt(bpm)} BPM`,
+        `（${TEMPO_STATE_LABEL[state]}${thawed ? "・解凍" : ""}）｜密度 ${fmt(density, 2)} → 音樂 ${fmt(bpm)} BPM`,
       {
         kind: "hit",
         hitNo,
@@ -266,19 +272,24 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
         samples,
         typicalRate,
         tempoState: state,
+        thawed,
         density,
         bpm,
       },
     );
   }
 
-  const CHANGE_REASON = { warmedUp: "量測完成", ratio: "持續達門檻", maxHold: "維持太久，當成新的平常" };
+  const CHANGE_REASON = { warmedUp: "量測完成", ratio: "持續達門檻" };
 
-  /** 速度狀態改變（tracker.hit 回傳的 change） */
+  /** 速度狀態改變（tracker.hit 回傳的 change；"thaw" 狀態不變，只是平常解凍） */
   function logStateChange({ from, to, reason }) {
     const { typicalRate, ratio } = tracker.getTempoState();
+    const head =
+      reason === "thaw"
+        ? `[tempo] ${TEMPO_STATE_LABEL[from]}已維持 ${MAX_HOLD_MS / 1000} 秒 → 平常解凍，開始跟著移動（`
+        : `[tempo] 狀態 ${TEMPO_STATE_LABEL[from]} → ${TEMPO_STATE_LABEL[to]}（${CHANGE_REASON[reason]}；`;
     trace(
-      `[tempo] 狀態 ${TEMPO_STATE_LABEL[from]} → ${TEMPO_STATE_LABEL[to]}（${CHANGE_REASON[reason]}；` +
+      head +
         `手速為平常的 ${fmt(ratio, 2)} 倍，平常 ${fmt(typicalRate && typicalRate * 60)} 擊/分）`,
       { kind: "state", from, to, reason, ratio, typicalRate },
     );
@@ -293,9 +304,23 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
     hatOpener.reset();
     specialWaitMs = SPECIAL_FIRST_MS;
     specialDueMs = null;
+    specialReady = false;
     idleResetDone = true;
     trace(`[tempo] 閒置 ${fmt(nowMs - lastHitMs)}ms → 歸零`, { kind: "idleReset", idleMs: nowMs - lastHitMs });
     hitNo = 0;
+  }
+
+  /** 每一擊（tracker.hit 之後）：計時已到、還沒鎖存，而且倍數 ≤ SPECIAL_RATIO_MAX → 鎖存 */
+  function checkSpecialReady(nowMs) {
+    if (specialReady || specialDueMs === null || nowMs < specialDueMs) return;
+    const { state, ratio, typicalRate } = tracker.getTempoState();
+    if (state === "measuring" || ratio === null || ratio > SPECIAL_RATIO_MAX) return;
+    specialReady = true;
+    trace(`[groove] 計時已到，手速為平常的 ${fmt(ratio, 2)} 倍（≤ ${SPECIAL_RATIO_MAX}）→ 下次換段進特殊節奏`, {
+      kind: "specialReady",
+      ratio,
+      typicalRate,
+    });
   }
 
   /** 給 engine 的 pickNext：計時器到了 → 特殊節奏；否則補上量到的速度後交給 selector */
@@ -307,29 +332,29 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
     // 離開特殊節奏 → 從現在重新計時
     if (specials.some((c) => c.id === currentId)) specialDueMs = lastHitMs + specialWaitMs;
     else if (specials.length && lastHitMs >= specialDueMs) {
-      // 速度對才派發（見檔頭「特殊節奏計時器」）
+      // 放慢過（鎖存）才派發，音樂速度是安全網（見檔頭「特殊節奏計時器」）
       const bpmOf = (c) => (60 * rate) / c.density;
       const fit =
-        rate !== null && tempo.state === "slower"
+        specialReady && rate !== null
           ? specials.filter((c) => bpmOf(c) >= SPECIAL_BPM_MIN && bpmOf(c) <= SPECIAL_BPM_MAX)
           : [];
       if (fit.length) {
         specialWaitMs = Math.max(SPECIAL_MIN_MS, specialWaitMs * SPECIAL_SHRINK);
         specialDueMs = Infinity;
+        specialReady = false;
         const picked = pickStale(fit); // 越久沒出現的越優先
         trace(
-          `[groove] 計時到，放慢（手速為平常的 ${fmt(ratio, 2)} 倍）→ 特殊節奏 ${picked.id}` +
+          `[groove] 計時到且放慢過（目前手速為平常的 ${fmt(ratio, 2)} 倍）→ 特殊節奏 ${picked.id}` +
             `（音樂 ${fmt(bpmOf(picked))} BPM，下次等待 ${(specialWaitMs / 1000).toFixed(0)} 秒）`,
           { kind: "special", id: picked.id, ratio, impliedBpm: bpmOf(picked), nextWaitMs: specialWaitMs },
         );
         return picked.id;
       }
-      const why =
-        rate === null
+      const why = !specialReady
+        ? `還沒放慢到平常的 ${SPECIAL_RATIO_MAX} 倍以下（目前 ${fmt(ratio, 2)} 倍）`
+        : rate === null
           ? "量不到速度"
-          : tempo.state !== "slower"
-            ? `速度狀態為${TEMPO_STATE_LABEL[tempo.state]}（手速為平常的 ${fmt(ratio, 2)} 倍），沒有放慢`
-            : `音樂速度會是 ${specials.map((c) => fmt(bpmOf(c))).join("/")} BPM，超出 ${SPECIAL_BPM_MIN}–${SPECIAL_BPM_MAX}`;
+          : `音樂速度會是 ${specials.map((c) => fmt(bpmOf(c))).join("/")} BPM，超出 ${SPECIAL_BPM_MIN}–${SPECIAL_BPM_MAX}`;
       trace(`[groove] 計時到，但${why} → 延後到下次換段`, {
         kind: "specialDeferred",
         ratio,
@@ -380,6 +405,7 @@ export function createFreePlayRouter({ audio, playZone, getFreeStyle }) {
       // ⚠ 順序：先結算間隔，再走格（引擎可能在這一擊決定下一個 groove）
       const { intervalMs, change } = tracker.hit(nowMs);
       if (change) logStateChange(change);
+      checkSpecialReady(nowMs);
       const grooveId = engine.getPosition().grooveId; // 這一擊所屬的 groove（engine.hit 可能換段）
       const step = engine.hit(pickNext);
       hitNo++;

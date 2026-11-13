@@ -39,14 +39,18 @@
  *     不再看「換段剛好落在加快後的哪幾秒」的運氣。
  *
  * 平常的手速 ＝「平常狀態」下最近 TYPICAL_MS 的間隔中位數，換成每秒幾擊。
- *   · 加快／放慢期間凍結：那段的間隔不進平常的統計（另外收在 devIntervals），
- *     30 秒的視窗也暫停計時（normalClock 只累計平常狀態的間隔）。
+ *   · 加快／放慢期間凍結：那段的間隔不進平常的統計（直接丟掉），
+ *     30 秒的視窗也暫停計時（normalClock 只累計進了平常統計的間隔）。
  *     ⚠ 舊做法（最近 30 秒全部間隔的中位數）會被自己汙染：加快的間隔也算進去，
  *       而且打得快間隔多、權重反而大，約 13 秒中位數就跳上來，快檔只剩一小段時間有效。
- *   · 回到平常 → 加快／放慢期間的間隔丟掉，平常的手速維持進入前的值。
- *   · 加快／放慢維持超過 MAX_HOLD_MS → 視為「新的平常」：用那段期間的間隔重建平常，
- *     回到 normal。獎勵的是「比剛才快／慢」的變化，不是絕對速度 —— 多久會被吸收
- *     現在是明確的參數，而不是中位數順帶的副作用。
+ *   · 回到平常 → 平常的手速維持進入前的值，視窗從暫停的地方繼續滑。
+ *   · 加快／放慢維持超過 MAX_HOLD_MS → 解凍：狀態不變，但之後的間隔照常進平常的視窗、
+ *     擠掉最舊的，平常跟著慢慢移過去；移到倍數回到遲滯門檻內，就自然回到 normal。
+ *     獎勵的是「比剛才快／慢」的變化，不是絕對速度 —— 多久開始吸收是明確的參數。
+ *     ⚠ 舊做法是到時「一次換掉」（用整段偏離期的間隔重建平常）：放慢通常是慢慢回升，
+ *       整段的中位數含最慢的那段，平常定得太低，人一回到原本的速度就被判成加快
+ *       （11-10 log：平常 300 → 225，回到 327 擊/分時倍數 1.27 → 誤判加快）。
+ *       解凍後同一段資料在 90 秒時順利回到平常（平常 276），沒有誤判。
  *   ⚠ TYPICAL_MS 不能拉長：太長的話玩的前面幾分鐘門檻都是固定的，動態化就失去意義。
  *   閒置歸零（reset）時一起清掉，重新開始打就重新量。
  *
@@ -90,7 +94,7 @@ export const SLOW_EXIT = 0.93;
 export const CONFIRM_MS = 1500;
 /** 開始打擊後這麼久內維持量測中（ms）：平常的手速還沒穩 */
 export const WARMUP_MS = 4000;
-/** 加快／放慢最多維持這麼久（ms），超過就當成新的平常 */
+/** 加快／放慢期間平常最多凍結這麼久（ms），超過就解凍、讓平常跟著移動 */
 export const MAX_HOLD_MS = 30000;
 
 /** 畫面與 log 用的狀態名稱 */
@@ -125,13 +129,13 @@ export function createTempoTracker() {
   let intervals;
   /** 平常狀態下的間隔：{ at（normalClock 時間）, ms } */
   let history;
-  /** 只累計平常狀態間隔的時鐘（ms）：加快／放慢期間暫停，平常的視窗不會被耗掉 */
+  /** 只累計進了平常統計的間隔的時鐘（ms）：凍結期間暫停，平常的視窗不會被耗掉 */
   let normalClock;
-  /** 加快／放慢期間的間隔（ms），最多保留 TYPICAL_MS 的總長 */
-  let devIntervals;
   let state;
   /** 加快／放慢期間凍結的平常手速（每秒幾擊） */
   let frozenTypical;
+  /** 加快／放慢已超過 MAX_HOLD_MS：平常不再凍結，間隔照常進平常的視窗 */
+  let thawed;
   /** 等待成立的新狀態與開始時間 */
   let pending;
   let pendingSinceMs;
@@ -144,9 +148,9 @@ export function createTempoTracker() {
     intervals = [];
     history = [];
     normalClock = 0;
-    devIntervals = [];
     state = "measuring";
     frozenTypical = null;
+    thawed = false;
     pending = null;
     pendingSinceMs = null;
     holdSinceMs = null;
@@ -176,46 +180,39 @@ export function createTempoTracker() {
     return { rate: (1000 * kept.length) / total, samples: kept.length };
   }
 
-  /** 平常每秒幾擊：加快／放慢中是凍結值；否則為平常狀態間隔的中位數（不足 RATE_MIN 個為 null） */
+  /** 平常的統計是否凍結中（加快／放慢、還沒解凍） */
+  const isFrozen = () => isDeviating(state) && !thawed;
+
+  /** 平常每秒幾擊：凍結中是凍結值；否則為平常視窗間隔的中位數（不足 RATE_MIN 個為 null） */
   function getTypicalRate() {
-    if (isDeviating(state)) return frozenTypical;
+    if (isFrozen()) return frozenTypical;
     if (history.length < RATE_MIN) return null;
     return 1000 / median(history.map((h) => h.ms));
   }
 
   function enter(next, nowMs, typicalRate) {
     if (isDeviating(next)) {
-      // 加快 ↔ 放慢直接切換時，平常維持原本凍結的值
-      if (!isDeviating(state)) frozenTypical = typicalRate;
+      // 加快 ↔ 放慢直接切換時，平常維持原本凍結的值（已解凍則凍結在目前的值）
+      if (!isFrozen()) frozenTypical = typicalRate;
       holdSinceMs = nowMs;
     } else {
-      // 回到平常：加快／放慢期間的間隔不算進平常，平常維持進入前的值
+      // 回到平常：凍結期間的間隔沒算進平常，平常維持進入前的值（或解凍後移到的值）
       frozenTypical = null;
       holdSinceMs = null;
     }
-    devIntervals = [];
+    thawed = false;
     state = next;
-    pending = null;
-  }
-
-  /** 加快／放慢太久 → 用那段期間的間隔重建平常 */
-  function acceptNewNormal() {
-    history = [];
-    normalClock = 0;
-    for (const ms of devIntervals) pushNormal(ms);
-    devIntervals = [];
-    frozenTypical = null;
-    holdSinceMs = null;
-    state = "normal";
     pending = null;
   }
 
   /** 每一擊後更新狀態；回傳 { from, to, reason }，沒有變化回傳 null */
   function updateState(nowMs) {
     const from = state;
-    if (isDeviating(state) && nowMs - holdSinceMs >= MAX_HOLD_MS) {
-      acceptNewNormal();
-      return { from, to: state, reason: "maxHold" };
+    if (isFrozen() && nowMs - holdSinceMs >= MAX_HOLD_MS) {
+      // 解凍：狀態不變，這一擊起間隔照常進平常的視窗（這一擊本身的間隔仍在凍結期內）
+      thawed = true;
+      frozenTypical = null;
+      return { from, to: state, reason: "thaw" };
     }
     const { rate } = getHitRate();
     const typicalRate = getTypicalRate();
@@ -244,7 +241,8 @@ export function createTempoTracker() {
    * 記下「上一擊 → 這一擊」的間隔，並更新狀態
    * @returns {{ intervalMs: ?number, change: ?{from: string, to: string, reason: string} }}
    *   intervalMs = 剛結算的間隔（ms，除錯用；第一擊為 null）；
-   *   change = 這一擊造成的狀態變化（reason："warmedUp"｜"ratio"｜"maxHold"），沒有為 null
+   *   change = 這一擊造成的狀態變化（reason："warmedUp"｜"ratio"｜"thaw"），沒有為 null；
+   *   "thaw" 時 from === to（狀態不變，只是平常解凍）
    */
   function hit(nowMs) {
     const ms = lastMs === null ? null : nowMs - lastMs;
@@ -252,25 +250,22 @@ export function createTempoTracker() {
     if (ms !== null) {
       intervals.push(ms);
       if (intervals.length > RATE_WINDOW) intervals.shift();
-      if (isDeviating(state)) {
-        devIntervals.push(ms);
-        let total = devIntervals.reduce((s, x) => s + x, 0);
-        while (total > TYPICAL_MS) total -= devIntervals.shift();
-      } else pushNormal(ms);
+      if (!isFrozen()) pushNormal(ms);
     }
     lastMs = nowMs;
     return { intervalMs: ms, change: updateState(nowMs) };
   }
 
   /**
-   * @returns {{ state: string, typicalRate: ?number, ratio: ?number }}
+   * @returns {{ state: string, typicalRate: ?number, ratio: ?number, thawed: boolean }}
    *   state = "measuring"｜"normal"｜"faster"｜"slower"；
-   *   typicalRate = 平常每秒幾擊；ratio = 手速 ÷ 平常（量不到為 null）
+   *   typicalRate = 平常每秒幾擊；ratio = 手速 ÷ 平常（量不到為 null）；
+   *   thawed = 加快／放慢已超過 MAX_HOLD_MS、平常正跟著移動（除錯用）
    */
   function getTempoState() {
     const { rate } = getHitRate();
     const typicalRate = getTypicalRate();
-    return { state, typicalRate, ratio: rate && typicalRate ? rate / typicalRate : null };
+    return { state, typicalRate, ratio: rate && typicalRate ? rate / typicalRate : null, thawed };
   }
 
   return { isDuplicate, hit, reset, getHitRate, getTempoState };

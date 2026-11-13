@@ -261,7 +261,7 @@ const songSession = createSongSession({
   getTransport: getActiveTransport,
   setTransport: setActiveTransport,
   songUI,
-  onNotice: (msg) => console.warn("[songMode]", msg),
+  onNotice: (msg) => perfLog.log("warn", "songMode", msg),
 });
 
 // 分部模式（無影片，背景由 MIDI 即時合成）。與 songSession 互斥：
@@ -272,7 +272,7 @@ const partSession = createPartSession({
   getTransport: getActiveTransport,
   setTransport: setActiveTransport,
   songUI,
-  onNotice: (msg) => console.warn("[partMode]", msg),
+  onNotice: (msg) => perfLog.log("warn", "partMode", msg),
 });
 
 /** 當前 active 的歌曲/分部 session（hudLoop 用）。兩者互斥。 */
@@ -342,15 +342,15 @@ const predictWebcam = createPredictWebcam({
       const session = calibration.getSession();
       if (session && !state._calibrationLogged) {
         state._calibrationLogged = true;
-        console.log("[main] 校準完成，session:", session);
+        perfLog.log("log", "main", "校準完成", { session });
 
         // ── 建立動態參數 profile 並注入 state ──
         const profile = buildCalibrationProfile(session);
         state.calibrationProfile = profile;
-        console.log("[main] 動態參數 profile:", profile);
+        perfLog.log("log", "main", "動態參數 profile", { profile });
 
         if (profile && profile.warnings.length > 0) {
-          console.warn("[main] 校準品質警告：", profile.warnings);
+          perfLog.log("warn", "main", "校準品質警告", { warnings: profile.warnings });
         }
 
         // ── 通知監控引擎重置（以正式 profile 重新初始化低谷追蹤器）──

@@ -20,6 +20,8 @@
  *   因此本 adapter 接收的是「宿主容器」，每次建立時自己生一個新的子 div。
  */
 
+import { perfLog } from "../poseEngine/perfLog.js";
+
 let seq = 0;
 
 export function createYtAdapter({ hostEl, videoId }) {
@@ -39,7 +41,7 @@ export function createYtAdapter({ hostEl, videoId }) {
       try {
         cb();
       } catch (err) {
-        console.error(`[ytAdapter] ${event} handler error:`, err);
+        perfLog.log("error", "ytAdapter", `${event} handler error`, { error: String(err?.stack ?? err) });
       }
     }
   }

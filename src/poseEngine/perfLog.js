@@ -14,6 +14,12 @@
  *        手動記錄中，自動記錄暫停（整段收在同一個 run，歌曲播放／停止改記成 event）。
  *   2b. 設定在記錄中途改變（膝蓋觸發、部位配對、打法）時，記一筆 event()
  *      到 run.events —— 逐幀資料只看得到「當下」，event 才看得出「何時變的」。
+ *   2c. pose log 是本專案的主要 log：要與 log 一起看的診斷訊息一律走 perfLog.log()
+ *      （同時印 console 並記成 run.events 的 type "log"），不要直接 console.log。
+ *      沒在記錄時的訊息先收在 RECENT_LOGS 筆的環形緩衝，下次 begin() 補進 events
+ *      （標 beforeRun）—— 冷啟動、校準這類「錄之前就發生」的事才查得到。
+ *      ⚠ level "debug" 不進緩衝（高頻細節會把里程碑擠掉）；記錄中照收。
+ *      線上（非本地端）只印 console，不收。
  *   3. 逐幀把重要數值收進緩衝；每次「打擊」或「中斷」把緩衝那一段 commit 進
  *      log dict（segments）。於是每個 segment = 「上一次打擊到這次打擊之間的
  *      逐幀軌跡 + 終結這段的那次打擊」，最適合回頭看「打下去前 PF 怎麼走的」。
@@ -61,7 +67,13 @@ const IS_LOCAL = detectLocal();
 /** 單一 run 內的緩衝上限（安全閥，避免超長 session 撐爆記憶體） */
 const MAX_FRAMES_PER_RUN = 60000;
 
+/** 沒在記錄時保留最近幾筆診斷訊息（begin() 時補進 run.events） */
+const RECENT_LOGS = 100;
+
 const logDict = { runs: [] };
+
+/** 沒在記錄時的診斷訊息（環形緩衝，見規則 2c） */
+let recentLogs = [];
 
 let running = false;
 let current = null; // 當前 run
@@ -140,9 +152,10 @@ export const perfLog = {
       standards: null,
       // 記錄中途的設定變化／播放邊緣：{ t, type, ...data }
       // （t = performance.now() ms，與 frame.t 同一時間軸）
-      events: [],
+      events: recentLogs.map((e) => ({ ...e, beforeRun: true })),
       segments: [],
     };
+    recentLogs = [];
     pending = [];
     segIndex = 0;
     framesInRun = 0;
@@ -160,6 +173,35 @@ export const perfLog = {
   event(type, data = {}) {
     if (!running || !current) return;
     current.events.push({ t: Math.round(performance.now()), type, ...data });
+  },
+
+  /**
+   * 診斷訊息：印到 console，同時記進 pose log（見規則 2c）。
+   * @param {"debug"|"log"|"warn"|"error"} level  console 的方法
+   * @param {string} source  來源模組（console 顯示成 [source]）
+   * @param {string} text    訊息本文
+   * @param {Object} [data]  結構化數值（一起印出，並展開記進 event）
+   */
+  log(level, source, text, data) {
+    const args = [`[${source}] ${text}`];
+    if (data !== undefined) args.push(data);
+    console[level](...args);
+    if (!IS_LOCAL) return;
+    // ⚠ 複製一份：profile 之類的物件之後可能被就地修改，log 要的是當下的值
+    let snapshot = data;
+    try {
+      snapshot = structuredClone(data);
+    } catch {
+      /* 無法複製（含函式等）就存原物件 */
+    }
+    const entry = { t: Math.round(performance.now()), type: "log", level, source, text, ...snapshot };
+    if (running && current) current.events.push(entry);
+    // debug 是高頻細節（例如每個下擊週期的樣本），錄製前不收：緩衝只有 RECENT_LOGS 筆，
+    // 會把冷啟動、校準這些里程碑擠掉（11-13 log：100 筆全是樣本產出）
+    else if (level !== "debug") {
+      recentLogs.push(entry);
+      if (recentLogs.length > RECENT_LOGS) recentLogs.shift();
+    }
   },
 
   /** 這個 run 是否還沒記過觸發標準（讓呼叫端只在需要時才建那個物件）。 */

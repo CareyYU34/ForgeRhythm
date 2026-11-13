@@ -59,6 +59,7 @@
 import { DEFAULT_CALIBRATION_PROFILE } from "./calibrationProfile.js";
 import { TUNING } from "./calibrationProfile.js";
 import { KNEE_THRESHOLDS_DEFAULT } from "./conditions.js";
+import { perfLog } from "./perfLog.js";
 
 // ─── 可調參數 ────────────────────────────────────────────────────────────────
 
@@ -323,7 +324,7 @@ export function createAdaptiveMonitor({ state }) {
     if (coldStartConsecutive >= MONITOR_TUNING.COLD_START_FRAMES) {
       state.calibrationProfile = DEFAULT_CALIBRATION_PROFILE;
       coldStartDone = true;
-      console.log("[adaptiveMonitor] 冷啟動完成，套用預設 profile");
+      perfLog.log("log", "adaptiveMonitor", "冷啟動完成，套用預設 profile");
       clearInterval(coldStartIntervalId);
       coldStartIntervalId = null;
 
@@ -393,8 +394,10 @@ export function createAdaptiveMonitor({ state }) {
       return;
     }
 
-    console.debug(
-      `[adaptiveMonitor] ${zoneKey} 樣本拒絕: ${
+    perfLog.log(
+      "debug",
+      "adaptiveMonitor",
+      `${zoneKey} 樣本拒絕: ${
         enoughFrames ? "無有效低谷幀" : "幀數不足"
       } cycleMin=${
         Number.isFinite(tracker.cycleMin) ? tracker.cycleMin.toFixed(4) : "n/a"
@@ -419,14 +422,19 @@ export function createAdaptiveMonitor({ state }) {
       const allHigher = recent.every((v) => v > est * (1 + r));
       if (allLower || allHigher) {
         tracker.samples = recent;
-        console.log(
-          `[adaptiveMonitor] ${zoneKey} 偵測到打法變化（${allLower ? "更深" : "更淺"}），清除舊樣本`,
+        perfLog.log(
+          "log",
+          "adaptiveMonitor",
+          `${zoneKey} 偵測到打法變化（${allLower ? "更深" : "更淺"}），清除舊樣本`,
         );
       }
     }
 
-    console.log(
-      `[adaptiveMonitor] ${zoneKey} 樣本產出${provisional ? "（暫結）" : ""}: ` +
+    // debug：每個下擊週期一筆（每秒好幾筆），不進 perfLog 的錄製前緩衝，免得洗掉冷啟動等里程碑
+    perfLog.log(
+      "debug",
+      "adaptiveMonitor",
+      `${zoneKey} 樣本產出${provisional ? "（暫結）" : ""}: ` +
         `${sample.toFixed(4)} frames=${tracker.cycleFrames} buffer=${tracker.samples.length}/${MONITOR_TUNING.TROUGH_SAMPLE_SIZE}`,
     );
 
@@ -527,8 +535,10 @@ export function createAdaptiveMonitor({ state }) {
       tracker.frozen = true;
     }
 
-    console.warn(
-      `[adaptiveMonitor] ${zoneKey} 故障回退: canHit 卡住 ${(stuckMs / 1000).toFixed(1)}s，` +
+    perfLog.log(
+      "warn",
+      "adaptiveMonitor",
+      `${zoneKey} 故障回退: canHit 卡住 ${(stuckMs / 1000).toFixed(1)}s，` +
         `troughPF ${prevTrough.toFixed(4)} → ${baseline.toFixed(4)}（第 ${count} 次）` +
         (tracker.frozen ? " ── 已凍結該 zone 自適應，需重新校準" : "") +
         (formalCalibrated ? "" : " ── 冷啟動階段，建議執行正式校準"),
@@ -607,8 +617,10 @@ export function createAdaptiveMonitor({ state }) {
         ? `${opts.prevTrough.toFixed(4)} → `
         : "";
 
-    console.log(
-      `[adaptiveMonitor] ${zoneKey} 估計更新: troughPF ${prevTroughStr}${tracker.troughPF.toFixed(4)}, ` +
+    perfLog.log(
+      "log",
+      "adaptiveMonitor",
+      `${zoneKey} 估計更新: troughPF ${prevTroughStr}${tracker.troughPF.toFixed(4)}, ` +
         `PF_HIT ${prevPFHit.toFixed(4)} → ${newPFHit.toFixed(4)}` +
         (limited ? `（受限速截斷，target=${target.toFixed(4)}）` : "") +
         (opts.skipRateLimit ? "（跳過限速）" : ""),
@@ -730,8 +742,10 @@ export function createAdaptiveMonitor({ state }) {
       },
     };
 
-    console.log(
-      `[adaptiveMonitor] ${zoneKey} near-miss 升級 PF_HIT: ` +
+    perfLog.log(
+      "log",
+      "adaptiveMonitor",
+      `${zoneKey} near-miss 升級 PF_HIT: ` +
         `${prevPFHit.toFixed(4)} → ${newPFHit.toFixed(4)}（最接近谷底 ${bestMissMin.toFixed(4)}）`,
     );
   }
@@ -843,8 +857,10 @@ export function createAdaptiveMonitor({ state }) {
         KNEE_DEFAULT_THRESHOLDS.windowDropHit;
       const newDropRelease = round4(newDropHit * ratio);
 
-      console.log(
-        `[adaptiveMonitor] ${side} knee windowDropHit 調整: ${currentDropHit.toFixed(4)} → ${newDropHit.toFixed(4)}`,
+      perfLog.log(
+        "log",
+        "adaptiveMonitor",
+        `${side} knee windowDropHit 調整: ${currentDropHit.toFixed(4)} → ${newDropHit.toFixed(4)}`,
       );
 
       ensureKneeProfile();
@@ -932,8 +948,10 @@ export function createAdaptiveMonitor({ state }) {
         ),
       );
       if (newThreshold !== state.visibilityThreshold) {
-        console.log(
-          `[adaptiveMonitor] visibilityThreshold 降低: ${state.visibilityThreshold?.toFixed(2)} → ${newThreshold}`,
+        perfLog.log(
+          "log",
+          "adaptiveMonitor",
+          `visibilityThreshold 降低: ${state.visibilityThreshold?.toFixed(2)} → ${newThreshold}`,
         );
         state.visibilityThreshold = newThreshold;
       }
@@ -954,8 +972,10 @@ export function createAdaptiveMonitor({ state }) {
             round4(current + MONITOR_TUNING.VIS_STEP_UP),
           );
           if (newThreshold !== current) {
-            console.log(
-              `[adaptiveMonitor] visibilityThreshold 提升: ${current.toFixed(2)} → ${newThreshold}`,
+            perfLog.log(
+              "log",
+              "adaptiveMonitor",
+              `visibilityThreshold 提升: ${current.toFixed(2)} → ${newThreshold}`,
             );
             state.visibilityThreshold = newThreshold;
           }
@@ -1023,7 +1043,7 @@ export function createAdaptiveMonitor({ state }) {
         applyPFHitUpdate(zoneKey, { skipRateLimit: true });
       }
 
-      console.log("[adaptiveMonitor] 重置完成（正式校準後）");
+      perfLog.log("log", "adaptiveMonitor", "重置完成（正式校準後）");
     },
 
     /**

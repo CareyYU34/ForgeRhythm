@@ -2,6 +2,7 @@ import {
   PoseLandmarker,
   FilesetResolver,
 } from "https://cdn.skypack.dev/@mediapipe/tasks-vision@0.10.11";
+import { perfLog } from "../perfLog.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 效能優化（低階／無獨顯 PC 打擊延遲）
@@ -61,10 +62,9 @@ export async function createPoseLandmarker(
   try {
     return await PoseLandmarker.createFromOptions(fileset, buildOptions("GPU"));
   } catch (err) {
-    console.warn(
-      "[poseLandmarker] GPU delegate 初始化失敗，退回 CPU delegate：",
-      err,
-    );
+    perfLog.log("warn", "poseLandmarker", "GPU delegate 初始化失敗，退回 CPU delegate", {
+      error: String(err?.stack ?? err),
+    });
     return await PoseLandmarker.createFromOptions(fileset, buildOptions("CPU"));
   }
 }
